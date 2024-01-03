@@ -9,12 +9,6 @@ use miette::{IntoDiagnostic, WrapErr};
 #[derive(Debug)]
 struct ConstDefaultCallbacks;
 
-macro_rules! p {
-    ($($tokens: tt)*) => {
-        println!("cargo:warning={}", format!($($tokens)*))
-    }
-}
-
 impl bindgen::callbacks::ParseCallbacks for ConstDefaultCallbacks {
     fn add_derives(&self, info: &DeriveInfo<'_>) -> Vec<String> {
         if info.kind == TypeKind::Struct {
