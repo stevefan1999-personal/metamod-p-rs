@@ -1,3 +1,7 @@
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+
 use std::ffi::{c_char, c_int, CStr};
 
 use byte_strings::c_str;
@@ -6,8 +10,8 @@ use log::{info, LevelFilter};
 use logger::SimpleLogger;
 use metamod_p::{
     edict_t, enginefuncs_t, gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t,
-    plugin_info_t, DLL_FUNCTIONS, ENGINE_INTERFACE_VERSION, INTERFACE_VERSION,
-    META_FUNCTIONS, META_INTERFACE_VERSION, PLUG_LOADTIME, PL_UNLOAD_REASON,
+    plugin_info_t, DLL_FUNCTIONS, ENGINE_INTERFACE_VERSION, INTERFACE_VERSION, META_FUNCTIONS,
+    META_INTERFACE_VERSION, PLUG_LOADTIME, PL_UNLOAD_REASON,
 };
 
 use crate::utils::MetaResult;
@@ -183,55 +187,4 @@ pub extern "C" fn Meta_Detach(_now: PLUG_LOADTIME, _reason: PL_UNLOAD_REASON) ->
 
 pub mod logger;
 
-pub mod utils {
-    use metamod_p::META_RES;
-    use std::mem::MaybeUninit;
-    use crate::gpMetaGlobals;
-
-    pub enum MetaResult<T> {
-        Ignored,
-        Handled,
-        Override(T),
-        Supercede(T),
-    }
-    
-    impl<T> MetaResult<T> {
-        pub unsafe fn original<'a>() -> Option<&'a T> {
-            ((*gpMetaGlobals).orig_ret as *mut T).as_ref()
-        }
-    }
-    
-    impl<T> MetaResult<T> {
-        pub fn into(self) -> T {
-            let globals = unsafe { gpMetaGlobals.as_mut() };
-    
-            match self {
-                MetaResult::Ignored => {
-                    if let Some(globals) = globals {
-                        globals.mres = META_RES::MRES_IGNORED;
-                    }
-                    unsafe { MaybeUninit::zeroed().assume_init() }
-                }
-                MetaResult::Handled => {
-                    if let Some(globals) = globals {
-                        globals.mres = META_RES::MRES_HANDLED;
-                    }
-                    unsafe { MaybeUninit::zeroed().assume_init() }
-                }
-                MetaResult::Override(x) => {
-                    if let Some(globals) = globals {
-                        globals.mres = META_RES::MRES_OVERRIDE;
-                    }
-                    x
-                }
-                MetaResult::Supercede(x) => {
-                    if let Some(globals) = globals {
-                        globals.mres = META_RES::MRES_SUPERCEDE;
-                    }
-                    x
-                }
-            }
-        }
-    }
-    
-}
+pub mod utils;
