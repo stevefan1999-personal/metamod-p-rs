@@ -12,7 +12,6 @@
 #include <common/director_cmds.h>
 #include <common/dlight.h>
 #include <common/dll_state.h>
-#include <common/engine_launcher_api.h>
 #include <common/entity_state.h>
 #include <common/entity_types.h>
 #include <common/event_api.h>
