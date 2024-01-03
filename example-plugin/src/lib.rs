@@ -4,21 +4,18 @@
 
 use std::ffi::{c_char, c_int, CStr};
 
-use byte_strings::c_str;
 use const_default::ConstDefault;
 use log::{info, LevelFilter};
 use logger::SimpleLogger;
 use metamod_p::{
     edict_t, enginefuncs_t, gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t,
     plugin_info_t, DLL_FUNCTIONS, ENGINE_INTERFACE_VERSION, INTERFACE_VERSION, META_FUNCTIONS,
-    META_INTERFACE_VERSION, PLUG_LOADTIME, PL_UNLOAD_REASON,
+    PLUG_LOADTIME, PL_UNLOAD_REASON, qboolean,
 };
 
 use crate::utils::MetaResult;
 
-pub(crate) static mut g_engfuncs: enginefuncs_t = enginefuncs_t {
-    ..enginefuncs_t::DEFAULT
-};
+pub(crate) static mut g_engfuncs: enginefuncs_t = enginefuncs_t::DEFAULT;
 pub(crate) static mut meta_engfuncs: enginefuncs_t = enginefuncs_t {
     pfnPrecacheSound: {
         extern "C" fn PrecacheSound(s: *mut c_char) -> c_int {
@@ -30,7 +27,7 @@ pub(crate) static mut meta_engfuncs: enginefuncs_t = enginefuncs_t {
     },
     pfnSetModel: {
         extern "C" fn SetModel(e: *mut edict_t, m: *const c_char) {
-            log::trace!("SetModel {e:?} {:?}", unsafe { CStr::from_ptr(m) });
+            // log::trace!("SetModel {e:?} {:?}", unsafe { CStr::from_ptr(m) });
             MetaResult::Ignored.into()
         }
 
@@ -46,7 +43,7 @@ pub(crate) static mut meta_engfuncs: enginefuncs_t = enginefuncs_t {
     },
     pfnCreateEntity: {
         extern "C" fn CreateEntity() -> *mut edict_t {
-            log::trace!("CreateEntity");
+            // log::trace!("CreateEntity");
             MetaResult::Ignored.into()
         }
         Some(CreateEntity)
@@ -62,6 +59,19 @@ pub(crate) static mut meta_engfuncs: enginefuncs_t = enginefuncs_t {
 };
 
 pub(crate) static mut gFunctionTable: DLL_FUNCTIONS = DLL_FUNCTIONS {
+    pfnClientConnect: {
+        unsafe extern "C" fn ClientConnect(
+            pEntity: *mut edict_t,
+            pszName: *const ::std::ffi::c_char,
+            pszAddress: *const ::std::ffi::c_char,
+            szRejectReason: *mut [::std::ffi::c_char; 128usize],
+        ) -> qboolean {
+            log::trace!("ClientConnect {pEntity:?} {:?} {:?} {:?}", CStr::from_ptr(pszName), CStr::from_ptr(pszAddress), CStr::from_ptr(szRejectReason.as_ref().unwrap().as_ptr()) );
+            MetaResult::Ignored.into()
+        }
+
+        Some(ClientConnect)
+    },
     ..DLL_FUNCTIONS::DEFAULT
 };
 pub(crate) static mut gMetaFunctionTable: META_FUNCTIONS = META_FUNCTIONS {
@@ -109,22 +119,8 @@ pub(crate) static mut gMetaFunctionTable: META_FUNCTIONS = META_FUNCTIONS {
     },
     ..META_FUNCTIONS::DEFAULT
 };
-pub(crate) static mut gpGlobals: *mut globalvars_t = std::ptr::null_mut();
-pub(crate) static mut gpMetaGlobals: *mut meta_globals_t = std::ptr::null_mut();
-pub(crate) static mut gpGamedllFuncs: *mut gamedll_funcs_t = std::ptr::null_mut();
-pub(crate) static mut gpMetaUtilFuncs: *mut mutil_funcs_t = std::ptr::null_mut();
 
-pub(crate) static mut Plugin_info: plugin_info_t = plugin_info_t {
-    ifvers:     META_INTERFACE_VERSION.as_ptr() as _,
-    name:       c_str!("minimal stub").as_ptr() as _,
-    version:    c_str!("1.17").as_ptr() as _,
-    date:       c_str!("2023/01/03").as_ptr() as _,
-    author:     c_str!("Steve Fan <willday@metamod.org>").as_ptr() as _,
-    url:        c_str!("http://www.metamod.org/").as_ptr() as _,
-    logtag:     c_str!("STUB").as_ptr() as _,
-    loadable:   PLUG_LOADTIME::PT_ANYTIME,
-    unloadable: PLUG_LOADTIME::PT_ANYPAUSE,
-};
+pub(crate) mod globals;
 
 #[no_mangle]
 pub extern "system" fn GiveFnptrsToDll(
@@ -134,7 +130,7 @@ pub extern "system" fn GiveFnptrsToDll(
     info!("hello world from GiveFnptrsToDll");
     unsafe {
         g_engfuncs = *pengfuncsFromEngine;
-        gpGlobals = pGlobals;
+        globals::GLOBALS = pGlobals;
     }
 }
 
@@ -145,8 +141,8 @@ pub extern "C" fn Meta_Query(
     pMetaUtilFuncs: *mut mutil_funcs_t,
 ) -> c_int {
     unsafe {
-        *pPlugInfo = &mut Plugin_info;
-        gpMetaUtilFuncs = pMetaUtilFuncs;
+        *pPlugInfo = &mut globals::PLUGIN_INFO;
+        globals::META_UTIL_FUNCS = pMetaUtilFuncs;
     }
     log::set_logger(&SimpleLogger)
         .map(|()| log::set_max_level(LevelFilter::Trace))
@@ -167,14 +163,14 @@ pub extern "C" fn Meta_Attach(
         return false.into();
     }
     unsafe {
-        gpMetaGlobals = pMGlobals;
+        globals::META_GLOBALS = pMGlobals;
     }
     if pFunctionTable.is_null() {
         return false.into();
     }
     unsafe {
         *pFunctionTable = gMetaFunctionTable;
-        gpGamedllFuncs = pGamedllFuncs;
+        globals::GAME_DLL_FUNCS = pGamedllFuncs;
     }
     true.into()
 }

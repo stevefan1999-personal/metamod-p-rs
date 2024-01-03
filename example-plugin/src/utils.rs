@@ -2,8 +2,6 @@ use std::mem::MaybeUninit;
 
 use metamod_p::META_RES;
 
-use crate::gpMetaGlobals;
-
 pub enum MetaResult<T> {
     Ignored,
     Handled,
@@ -13,13 +11,13 @@ pub enum MetaResult<T> {
 
 impl<T> MetaResult<T> {
     pub unsafe fn original<'a>() -> Option<&'a T> {
-        ((*gpMetaGlobals).orig_ret as *mut T).as_ref()
+        ((*crate::globals::META_GLOBALS).orig_ret as *mut T).as_ref()
     }
 }
 
 impl<T> MetaResult<T> {
     pub fn into(self) -> T {
-        let globals = unsafe { gpMetaGlobals.as_mut() };
+        let globals = unsafe { crate::globals::META_GLOBALS.as_mut() };
 
         match self {
             MetaResult::Ignored => {
