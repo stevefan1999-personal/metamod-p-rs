@@ -14,3 +14,8 @@ byte-strings = "0.3.1"
 const-default = { version = "1.0.0", features = ["std", "derive"] }
 log = "0.4.20"
 vc-ltl = "5.0.9"
+
+[features]
+default = []
+
+fallguys = ["metamod-p/fallguys"]

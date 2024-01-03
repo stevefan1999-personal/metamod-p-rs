@@ -9,8 +9,8 @@ use log::{info, LevelFilter};
 use logger::SimpleLogger;
 use metamod_p::{
     edict_t, enginefuncs_t, gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t,
-    plugin_info_t, DLL_FUNCTIONS, ENGINE_INTERFACE_VERSION, INTERFACE_VERSION, META_FUNCTIONS,
-    PLUG_LOADTIME, PL_UNLOAD_REASON, qboolean,
+    plugin_info_t, qboolean, DLL_FUNCTIONS, ENGINE_INTERFACE_VERSION, INTERFACE_VERSION,
+    META_FUNCTIONS, PLUG_LOADTIME, PL_UNLOAD_REASON,
 };
 
 use crate::utils::MetaResult;
@@ -66,7 +66,12 @@ pub(crate) static mut gFunctionTable: DLL_FUNCTIONS = DLL_FUNCTIONS {
             pszAddress: *const ::std::ffi::c_char,
             szRejectReason: *mut [::std::ffi::c_char; 128usize],
         ) -> qboolean {
-            log::trace!("ClientConnect {pEntity:?} {:?} {:?} {:?}", CStr::from_ptr(pszName), CStr::from_ptr(pszAddress), CStr::from_ptr(szRejectReason.as_ref().unwrap().as_ptr()) );
+            log::trace!(
+                "ClientConnect {pEntity:?} {:?} {:?} {:?}",
+                CStr::from_ptr(pszName),
+                CStr::from_ptr(pszAddress),
+                CStr::from_ptr(szRejectReason.as_ref().unwrap().as_ptr())
+            );
             MetaResult::Ignored.into()
         }
 

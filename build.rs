@@ -19,30 +19,30 @@ impl bindgen::callbacks::ParseCallbacks for ConstDefaultCallbacks {
     }
 }
 
-fn do_bindgen(header: &str, file: &str) -> miette::Result<()> {
+fn do_bindgen(metamod_variant: &str, header: &str, file: &str) -> miette::Result<()> {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    let metamod_include_paths: Vec<String> = [
+        "",
+        "hlsdk",
+        "hlsdk/common",
+        "hlsdk/dlls",
+        "hlsdk/engine",
+        "hlsdk/pm_shared",
+        "metamod",
+    ]
+    .into_iter()
+    .map(|path| format!("{metamod_variant}/{path}"))
+    .flat_map(|path| vec!["-I".to_string(), path.to_owned()])
+    .collect();
 
     let bindings = bindgen::Builder::default()
         .header(header)
-        .clang_args(&[
-            "-I",
-            "metamod-p",
-            "-I",
-            "metamod-p/hlsdk",
-            "-I",
-            "metamod-p/metamod",
-            "-I",
-            "metamod-p/hlsdk/common",
-            "-I",
-            "metamod-p/hlsdk/dlls",
-            "-I",
-            "metamod-p/hlsdk/engine",
-            "-I",
-            "metamod-p/hlsdk/pm_shared",
-            "-x",
-            "c++",
-        ])
-        .allowlist_file(".*?metamod-p.*")
+        .clang_args(itertools::concat(vec![
+            metamod_include_paths,
+            vec!["-x".to_string(), "c++".to_string()],
+        ]))
+        .allowlist_file(format!(".*?{metamod_variant}.*"))
         .vtable_generation(true)
         .ctypes_prefix("::std::ffi")
         .derive_copy(true)
@@ -68,6 +68,14 @@ fn do_bindgen(header: &str, file: &str) -> miette::Result<()> {
 }
 
 fn main() -> miette::Result<()> {
-    do_bindgen("wrapper.h", "wrapper.rs")?;
+    do_bindgen(
+        if cfg!(feature = "fallguys") {
+            "metamod-fallguys"
+        } else {
+            "metamod-p"
+        },
+        "wrapper.h",
+        "wrapper.rs",
+    )?;
     Ok(())
 }
