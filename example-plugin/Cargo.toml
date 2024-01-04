@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-metamod-p = { version = "0.1.0", path = ".." }
+metamod-p = { version = "*", path = ".." }
 byte-strings = "0.3.1"
 const-default = { version = "1.0.0", features = ["std", "derive"] }
 log = "0.4.20"
