@@ -3,8 +3,9 @@ members = ["example-plugin"]
 
 [package]
 name = "metamod-p"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 const-default = { version = "1.0.0", features = ["std", "derive"] }
