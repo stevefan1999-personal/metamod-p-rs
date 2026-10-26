@@ -72,6 +72,10 @@ Three Metamod flavours exist:
   functions through `metamod_p::sys`.
 - To use a newer interface, bump the submodule and `metamod_release` in
   the `Justfile` together, to a release with that interface.
+- Metamod calls `Meta_Query` before it compares interface versions, and
+  an older metamod has shorter tables than newer headers. So `Meta_Query`
+  refuses a metamod with another major or an older minor interface before
+  it copies the utility table.
 - The safe layer writes only the hook entries that a plugin installs, one
   at a time through the pointer, so it does not go past the end of a
   632-byte hook table. The function slots after `pfnEngCheckParm` still

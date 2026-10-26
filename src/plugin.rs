@@ -211,7 +211,8 @@ plugin_trait! {
         const OVERRIDES: Overrides = Overrides::All;
 
         /// Called from `Meta_Query` with metamod's interface version, such as
-        /// `5:17`. Return an error to refuse to load.
+        /// `5:16`, once the crate has checked that metamod is not older than
+        /// the headers. Return an error to refuse to load.
         #[allow(unused_variables)]
         fn query(metamod_interface: &CStr) -> Result<(), Box<dyn Error>> {
             Ok(())

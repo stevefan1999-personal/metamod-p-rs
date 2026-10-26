@@ -396,7 +396,7 @@ fn engine_functions() -> enginefuncs_t {
     }
 }
 
-fn util_functions() -> mutil_funcs_t {
+pub fn util_functions() -> mutil_funcs_t {
     mutil_funcs_t {
         pfnLogConsole: Some(log_console),
         pfnLogMessage: Some(log_message),

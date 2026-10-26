@@ -888,6 +888,36 @@ fn engine_hands_out_metamods_copy_of_the_game_tables() {
 }
 
 #[test]
+fn older_metamod_is_refused_before_its_tables_are_copied() {
+    let (mut functions, globals) = support::boot();
+    let mut util = support::util_functions();
+    let mut info = ptr::null_mut();
+    let mut tables = sys::META_FUNCTIONS::default();
+    let mut meta_globals = sys::meta_globals_t::default();
+    // SAFETY: valid pointers, as metamod would pass them; 5:12 is older than
+    // both header sets.
+    unsafe {
+        GiveFnptrsToDll(&mut functions, globals);
+        assert_eq!(
+            Meta_Query(c"5:12".as_ptr().cast_mut(), &mut info, &mut util),
+            0
+        );
+        assert_eq!(
+            Meta_Attach(
+                PLUG_LOADTIME::PT_ANYTIME,
+                &mut tables,
+                &mut meta_globals,
+                ptr::null_mut()
+            ),
+            0,
+            "the query never built the engine handle from the table"
+        );
+    }
+    assert!(!info.is_null(), "metamod can still name the plugin");
+    assert_eq!(events(), Vec::<String>::new(), "Plugin::attach never ran");
+}
+
+#[test]
 fn null_pointers_into_the_entry_points_are_refused() {
     // SAFETY: metamod could pass null; the plugin must refuse, not crash.
     unsafe {

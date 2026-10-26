@@ -4,7 +4,7 @@
 use std::{
     cell::{RefCell, UnsafeCell},
     error::Error,
-    ffi::{c_char, c_int},
+    ffi::{c_char, c_int, CStr},
     ptr::NonNull,
 };
 
@@ -14,8 +14,8 @@ use crate::{
     logger,
     plugin::{dll_hooks, engine_hooks, new_dll_hooks},
     sys::{
-        enginefuncs_t, gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t, plugin_info_t,
-        META_FUNCTIONS, PLUG_LOADTIME, PL_UNLOAD_REASON,
+        self, enginefuncs_t, gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t,
+        plugin_info_t, META_FUNCTIONS, PLUG_LOADTIME, PL_UNLOAD_REASON,
     },
     LoadTime, MainThreadCell, Plugin, UnloadReason,
 };
@@ -103,15 +103,40 @@ pub unsafe fn meta_query<P: Exported>(
             // SAFETY: metamod passes a writable slot for the info pointer.
             unsafe { slot.write(info) }
         }
+        // SAFETY: metamod passes its interface version as a C string.
+        let interface =
+            unsafe { c_str(interface_version) }.ok_or("metamod passed no interface version")?;
+        // An older metamod has shorter tables than these headers, so copying
+        // them would read past their end. Metamod refuses such a plugin too,
+        // but only after this call.
+        if !provides(interface, sys::META_INTERFACE_VERSION) {
+            return Err(format!(
+                "metamod interface {interface:?} lacks interface {:?} of this plugin",
+                sys::META_INTERFACE_VERSION
+            )
+            .into());
+        }
         // SAFETY: metamod lends its utility table for the call; it is copied.
         let util =
             unsafe { util_functions.as_ref() }.ok_or("metamod passed no utility functions")?;
         Host::get().connect(*util, info)?;
-        // SAFETY: metamod passes its interface version as a C string.
-        let interface =
-            unsafe { c_str(interface_version) }.ok_or("metamod passed no interface version")?;
         P::query(interface)
     })
+}
+
+/// Whether a metamod with the `major:minor` interface `metamod` has every
+/// table entry of `headers`: the same major and no older minor, as metamod
+/// compares them.
+fn provides(metamod: &CStr, headers: &CStr) -> bool {
+    let parse = |version: &CStr| {
+        let (major, minor) = version.to_str().ok()?.split_once(':')?;
+        Some((major.parse::<u32>().ok()?, minor.parse::<u32>().ok()?))
+    };
+    matches!(
+        (parse(metamod), parse(headers)),
+        (Some((major, minor)), Some((headers_major, headers_minor)))
+            if major == headers_major && minor >= headers_minor
+    )
 }
 
 /// # Safety
@@ -328,5 +353,14 @@ mod tests {
     fn error_that_panics_on_drop_still_reports_failure() {
         assert_eq!(status("test", || Err(Box::new(BrokenError))), FALSE);
         assert_eq!(status("test", || Ok(())), TRUE);
+    }
+
+    #[test]
+    fn metamod_must_have_the_interface_of_the_headers() {
+        assert!(provides(c"5:16", c"5:16"));
+        assert!(provides(c"5:16", c"5:13"), "a newer minor adds entries");
+        assert!(!provides(c"5:13", c"5:16"), "an older minor lacks entries");
+        assert!(!provides(c"6:16", c"5:16"), "another major is incompatible");
+        assert!(!provides(c"5", c"5:16"), "an unknown format is refused");
     }
 }
