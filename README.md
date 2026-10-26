@@ -127,7 +127,7 @@ The crate type must be `cdylib`. The full example is in
 | Task | API |
 | --- | --- |
 | Print | `Engine::server_print`, `alert`, `client_print` with `PrintKind::{Console, Center, Chat}` |
-| Commands | `Engine::server_command`, `server_execute`, `client_command` (stufftext) |
+| Commands | `Engine::server_command`, `server_execute` (`unsafe`: must not unload the plugin), `client_command` (stufftext) |
 | Console commands | `Engine::register_command(name, closure)`, `Engine::command_args` |
 | Precache | `Engine::precache_model`, `precache_sound`, `precache_generic` (the path is copied into the engine's string pool for the map; use `/` in paths) |
 | Cvars | `StaticCvar::new` and `register`, `Engine::cvar`, `Cvar::value`, `string`, `set_value`, `set_string` |

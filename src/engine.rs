@@ -174,8 +174,15 @@ impl Engine {
     }
 
     /// Runs the queued server console commands now.
-    pub fn server_execute(&self) {
-        // SAFETY: takes no arguments.
+    ///
+    /// # Safety
+    ///
+    /// The queued commands must not unload or reload this plugin, such as
+    /// `meta unload`, `meta reload` or `meta force_unload`: metamod would
+    /// close the library while this call is on its stack. The plugin refuses
+    /// the first two while its code runs, but `force_unload` ignores that.
+    pub unsafe fn server_execute(&self) {
+        // SAFETY: takes no arguments; the caller keeps the plugin loaded.
         unsafe { host_call!(self.functions, pfnServerExecute()) }
     }
 
