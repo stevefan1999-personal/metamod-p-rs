@@ -55,16 +55,23 @@ impl Engine {
     /// The words of the command the engine is running right now, such as a
     /// client command inside the `client_command` hook.
     pub fn command_args(&self) -> CommandArgs {
-        // SAFETY: the engine returns pointers to its current command words,
-        // which are copied before anything else runs.
-        let copy = |word: *const _| unsafe { c_str(word) }.unwrap_or_default().to_owned();
-        // SAFETY: plain calls into the engine's command tokenizer.
+        // SAFETY: reads the word count of the engine's current command.
         let count = unsafe { host_call!(self.functions, pfnCmd_Argc()) };
+        let word = |index| {
+            // SAFETY: the engine returns a word of its current command, which
+            // is copied before anything else runs.
+            unsafe { c_str(host_call!(self.functions, pfnCmd_Argv(index))) }
+                .unwrap_or_default()
+                .to_owned()
+        };
+        // SAFETY: the engine returns the text after the command name, which
+        // is copied before anything else runs.
+        let rest = unsafe { c_str(host_call!(self.functions, pfnCmd_Args())) }
+            .unwrap_or_default()
+            .to_owned();
         CommandArgs {
-            words: (0..count)
-                .map(|index| copy(unsafe { host_call!(self.functions, pfnCmd_Argv(index)) }))
-                .collect(),
-            rest:  copy(unsafe { host_call!(self.functions, pfnCmd_Args()) }),
+            words: (0..count).map(word).collect(),
+            rest,
         }
     }
 
