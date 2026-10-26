@@ -42,6 +42,9 @@ impl MetamodVariant {
             .allowlist_file(format!(".*?({}|{}).*", self.hlsdk, self.metamod))
             .vtable_generation(true)
             .ctypes_prefix("::std::ffi")
+            // The headers' doc comments are licence prose; rustdoc would run
+            // their indented lines as doctests.
+            .generate_comments(false)
             .derive_copy(true)
             .derive_default(true)
             .derive_hash(true)
