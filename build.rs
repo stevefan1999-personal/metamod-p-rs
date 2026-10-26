@@ -19,17 +19,17 @@ impl bindgen::callbacks::ParseCallbacks for ConstDefaultCallbacks {
 /// Header roots of one metamod flavour: the HLSDK copy it ships and the
 /// directory that holds `meta_api.h`.
 struct MetamodVariant {
-    hlsdk: &'static str,
+    hlsdk:   &'static str,
     metamod: &'static str,
 }
 
 impl MetamodVariant {
     const FALLGUYS: Self = Self {
-        hlsdk: "metamod-fallguys/metamod/include/HLSDK",
+        hlsdk:   "metamod-fallguys/metamod/include/HLSDK",
         metamod: "metamod-fallguys/metamod/include",
     };
     const METAMOD_P: Self = Self {
-        hlsdk: "metamod-p/hlsdk",
+        hlsdk:   "metamod-p/hlsdk",
         metamod: "metamod-p/metamod",
     };
 
