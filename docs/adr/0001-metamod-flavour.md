@@ -12,7 +12,8 @@ Three Metamod flavours exist:
 - Metamod-R (ReHLDS project), a fork of Metamod-P.
 - Metamod-P (Bots-United), the `metamod-p` submodule, interface `5:13`.
 - metamod-svencoop (formerly metamod-fallguys), the `metamod-fallguys`
-  submodule, interface `5:17`.
+  submodule. Its newest release, `v20261009a`, has interface `5:16`; the
+  unreleased `main` branch has `5:17`.
 
 ## Evidence
 
@@ -21,7 +22,7 @@ Three Metamod flavours exist:
    Metamod-P (`metamod-fallguys/README.md`). Its game table knows the Sven
    game DLL: `{"svencoop", "server.so", "server.dll", "Sven Coop [Steam
    Version]"}` (`metamod-fallguys/metamod/src/games.h:122`). Its `mutil`
-   table adds Sven-specific functions up to interface `5:17`
+   table adds Sven-specific functions
    (`metamod-fallguys/metamod/include/meta_api.h`).
 2. No Metamod-R source is in this workspace. Its upstream README says it "is
    recommended to be run with ReHLDS (API 3.1+)". Its own game table marks
@@ -34,11 +35,19 @@ Three Metamod flavours exist:
    636 bytes with Metamod-P headers and 632 bytes with metamod-svencoop
    headers. A plugin that copies the engine table with the wrong headers
    reads past the end of the table on Sven Co-op.
+4. Metamod refuses plugins with a newer minor interface than its own. A
+   plugin built from the `main` headers (`5:17`) was rejected by the
+   `v20261009a` release on Sven Co-op: `Plugin '<rust_hello.so>' requires
+   a newer version of Metamod (Metamod needs at least interface 5:17 not
+   the current 5:16)`. Between the tag and `main`, `include/` only gains
+   the gamedata functions of `5:17`, which the safe layer does not use.
 
 ## Decision
 
 - Sven Co-op plugins use metamod-svencoop: enable the `fallguys` feature.
   The example plugin enables it by default.
+- The `metamod-fallguys` submodule is pinned to the release tag that the
+  servers run (`v20261009a`, interface `5:16`), not to `main`.
 - The crate keeps Metamod-P as its default feature for plain HLDS users.
 - Do not add Metamod-R bindings.
 - The smoke test pins the metamod-svencoop `v20261009a` release and checks
@@ -46,8 +55,11 @@ Three Metamod flavours exist:
 
 ## Consequences
 
-- Plugins built with `fallguys` report interface `5:17` and can use the
-  extended `mutil` functions through `metamod_p::sys`.
+- Plugins built with `fallguys` report interface `5:16` and load on the
+  `v20261009a` release and later; they can use the extended `mutil`
+  functions through `metamod_p::sys`.
+- To use a newer interface, bump the submodule and `metamod_release` in
+  the `Justfile` together, to a release with that interface.
 - The safe layer writes only the hook entries that a plugin installs, but
   `GiveFnptrsToDll` copies the whole engine table, so the headers must match
   the engine. Use `fallguys` for every Sven Co-op build.
