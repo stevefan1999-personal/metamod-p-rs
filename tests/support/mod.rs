@@ -474,35 +474,34 @@ pub fn try_load(now: PLUG_LOADTIME) -> (c_int, Loaded) {
     )
 }
 
+/// A getter from `META_FUNCTIONS`.
+pub type Getter<T> = Option<unsafe extern "C" fn(*mut T, *mut c_int) -> c_int>;
+
+/// Asks a getter for its table with `version`, as metamod does, and returns
+/// the getter's answer, the version it left and the table.
+pub fn request<T: Default>(getter: Getter<T>, version: c_int) -> (c_int, c_int, T) {
+    let mut table = T::default();
+    let mut version = version;
+    // SAFETY: both pointers are valid.
+    let answer = unsafe { getter.expect("getter")(&mut table, &mut version) };
+    (answer, version, table)
+}
+
 impl Loaded {
     /// The game DLL hook table, filled in through `GetEntityAPI2`.
     pub fn dll_table(&self) -> DLL_FUNCTIONS {
-        let mut table = DLL_FUNCTIONS::default();
-        let mut version = INTERFACE_VERSION as c_int;
-        let getter = self.tables.pfnGetEntityAPI2.expect("GetEntityAPI2");
-        // SAFETY: both pointers are valid.
-        assert_eq!(
-            unsafe { getter(&mut table, &mut version) },
-            1,
-            "GetEntityAPI2"
-        );
+        let (answer, _, table) = request(self.tables.pfnGetEntityAPI2, INTERFACE_VERSION as c_int);
+        assert_eq!(answer, 1, "GetEntityAPI2");
         table
     }
 
     /// The post hook table, filled in through `GetEntityAPI2_Post`.
     pub fn dll_post_table(&self) -> DLL_FUNCTIONS {
-        let mut table = DLL_FUNCTIONS::default();
-        let mut version = INTERFACE_VERSION as c_int;
-        let getter = self
-            .tables
-            .pfnGetEntityAPI2_Post
-            .expect("GetEntityAPI2_Post");
-        // SAFETY: both pointers are valid.
-        assert_eq!(
-            unsafe { getter(&mut table, &mut version) },
-            1,
-            "GetEntityAPI2_Post"
+        let (answer, _, table) = request(
+            self.tables.pfnGetEntityAPI2_Post,
+            INTERFACE_VERSION as c_int,
         );
+        assert_eq!(answer, 1, "GetEntityAPI2_Post");
         table
     }
 

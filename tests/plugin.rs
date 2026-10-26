@@ -19,7 +19,7 @@ use metamod_p::{
     UnloadReason,
 };
 use support::{
-    calls, clear_calls, edict, load, Call, CONNECTED_PLAYER, EMPTY_PLAYER_SLOT, FREE_SLOT,
+    calls, clear_calls, edict, load, request, Call, CONNECTED_PLAYER, EMPTY_PLAYER_SLOT, FREE_SLOT,
     PRECACHED_MODEL_INDEX, SAY_TEXT,
 };
 
@@ -118,6 +118,45 @@ impl Plugin for TestPlugin {
         PostResult::Override(!returned.original)
     }
 
+    fn client_disconnect_post(&self, player: Edict) -> PostResult<()> {
+        event(format!("disconnect_post {}", player.index()));
+        PostResult::Handled
+    }
+
+    fn cvar_value(
+        &self,
+        player: Edict,
+        request_id: i32,
+        name: &CStr,
+        value: &CStr,
+    ) -> MetaResult<()> {
+        event(format!(
+            "cvar_value {} {request_id} {name:?} {value:?}",
+            player.index()
+        ));
+        MetaResult::Handled
+    }
+
+    fn precache_model_post(&self, path: &CStr, returned: Returned<i32>) -> PostResult<i32> {
+        event(format!("precache_post {path:?} {returned:?}"));
+        PostResult::Override(returned.original + 1)
+    }
+
+    fn message_begin(
+        &self,
+        destination: i32,
+        kind: MessageType,
+        origin: Option<[f32; 3]>,
+        receiver: Option<Edict>,
+    ) -> MetaResult<()> {
+        let receiver = receiver.map(|receiver| receiver.index());
+        event(format!(
+            "message_begin {destination} {} {origin:?} {receiver:?}",
+            kind.0
+        ));
+        MetaResult::Handled
+    }
+
     fn think(&self, _entity: Edict) -> MetaResult<()> {
         panic!("think failed")
     }
@@ -188,10 +227,10 @@ fn attach_only_offers_tables_with_overridden_hooks() {
     let loaded = load();
     assert!(loaded.tables.pfnGetEntityAPI2.is_some());
     assert!(loaded.tables.pfnGetEntityAPI2_Post.is_some());
-    assert!(loaded.tables.pfnGetNewDLLFunctions.is_none());
+    assert!(loaded.tables.pfnGetNewDLLFunctions.is_some());
     assert!(loaded.tables.pfnGetNewDLLFunctions_Post.is_none());
     assert!(loaded.tables.pfnGetEngineFunctions.is_some());
-    assert!(loaded.tables.pfnGetEngineFunctions_Post.is_none());
+    assert!(loaded.tables.pfnGetEngineFunctions_Post.is_some());
     assert!(loaded.tables.pfnGetEntityAPI.is_none());
 }
 
@@ -346,6 +385,113 @@ fn engine_hook_supercedes_with_its_value() {
         events().last().cloned(),
         Some("precache \"models/player.mdl\"".into())
     );
+}
+
+#[test]
+fn new_dll_table_has_its_own_interface_version() {
+    let loaded = load();
+    let getter = loaded.tables.pfnGetNewDLLFunctions;
+    let (answer, version, table) = request(getter, sys::INTERFACE_VERSION as c_int);
+    assert_eq!(
+        (answer, version),
+        (0, sys::NEW_DLL_FUNCTIONS_VERSION as c_int)
+    );
+    assert!(table.pfnCvarValue2.is_none());
+    let (answer, _, table) = request(getter, sys::NEW_DLL_FUNCTIONS_VERSION as c_int);
+    assert_eq!(answer, 1);
+    assert!(table.pfnShouldCollide.is_none());
+    let hook = table.pfnCvarValue2.expect("CvarValue2 hook");
+    // SAFETY: valid arguments, as the engine passes them.
+    unsafe {
+        hook(
+            edict(CONNECTED_PLAYER).cast_const(),
+            7,
+            c"cl_lw".as_ptr(),
+            c"1".as_ptr(),
+        )
+    };
+    assert_eq!(loaded.meta_globals.mres, META_RES::MRES_HANDLED);
+    assert_eq!(
+        events().last().cloned(),
+        Some("cvar_value 1 7 \"cl_lw\" \"1\"".into())
+    );
+}
+
+#[test]
+fn engine_post_hook_overrides_after_reading_the_original() {
+    let loaded = load();
+    let (answer, _, table) = request(
+        loaded.tables.pfnGetEngineFunctions_Post,
+        sys::ENGINE_INTERFACE_VERSION as c_int,
+    );
+    assert_eq!(answer, 1);
+    let mut original: c_int = PRECACHED_MODEL_INDEX;
+    loaded.meta_globals.orig_ret = ptr::from_mut(&mut original).cast();
+    loaded.meta_globals.status = META_RES::MRES_IGNORED;
+    let hook = table.pfnPrecacheModel.expect("precache post hook");
+    // SAFETY: a valid path.
+    let returned = unsafe { hook(c"models/player.mdl".as_ptr().cast_mut()) };
+    assert_eq!(returned, PRECACHED_MODEL_INDEX + 1);
+    assert_eq!(loaded.meta_globals.mres, META_RES::MRES_OVERRIDE);
+    let expected = Returned {
+        original:   PRECACHED_MODEL_INDEX,
+        overridden: None,
+    };
+    assert_eq!(
+        events().last().cloned(),
+        Some(format!("precache_post \"models/player.mdl\" {expected:?}"))
+    );
+}
+
+#[test]
+fn message_begin_hook_converts_the_origin_and_the_receiver() {
+    let loaded = load();
+    let (_, _, table) = request(
+        loaded.tables.pfnGetEngineFunctions,
+        sys::ENGINE_INTERFACE_VERSION as c_int,
+    );
+    let hook = table.pfnMessageBegin.expect("MessageBegin hook");
+    let origin = [1.0, 2.0, 3.0];
+    // SAFETY: valid arguments, as the game passes them.
+    unsafe {
+        hook(
+            sys::MSG_ONE as c_int,
+            SAY_TEXT,
+            origin.as_ptr(),
+            edict(CONNECTED_PLAYER),
+        );
+        hook(
+            sys::MSG_ALL as c_int,
+            SAY_TEXT,
+            ptr::null(),
+            ptr::null_mut(),
+        );
+    }
+    assert_eq!(loaded.meta_globals.mres, META_RES::MRES_HANDLED);
+    assert_eq!(
+        events()[1..],
+        [
+            format!(
+                "message_begin {} {SAY_TEXT} Some([1.0, 2.0, 3.0]) Some(1)",
+                sys::MSG_ONE
+            ),
+            format!("message_begin {} {SAY_TEXT} None None", sys::MSG_ALL),
+        ]
+    );
+}
+
+#[test]
+fn void_post_hook_reports_its_result() {
+    let loaded = load();
+    loaded.meta_globals.mres = META_RES::MRES_UNSET;
+    let hook = loaded
+        .dll_post_table()
+        .pfnClientDisconnect
+        .expect("ClientDisconnect post hook");
+    // SAFETY: a valid player.
+    unsafe { hook(edict(CONNECTED_PLAYER)) };
+    assert_eq!(loaded.meta_globals.mres, META_RES::MRES_HANDLED);
+    assert_eq!(events().last().cloned(), Some("disconnect_post 1".into()));
 }
 
 #[test]
