@@ -113,6 +113,7 @@ unsafe extern "C" fn run_command() {
         let Some(engine) = Host::engine() else {
             return log::error!("console command ran before the engine was connected");
         };
+        let _call = Host::get().enter();
         let args = engine.command_args();
         let name = args.get(0).unwrap_or_default();
         // Clone the handler out so that it can register commands itself.

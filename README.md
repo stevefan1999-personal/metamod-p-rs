@@ -110,6 +110,9 @@ The crate type must be `cdylib`. The full example is in
   `log` lines from other threads go to stderr.
 - A panic in a hook is caught at the C boundary and logged as an error;
   the hook then counts as `MetaResult::Ignored`.
+- The plugin refuses to detach while one of its hooks or commands runs,
+  because metamod closes the library after a detach. Metamod then keeps
+  it loaded, except for `meta force_unload`.
 - Hooks are skipped (`Ignored`) when the engine passes a null or free
   entity, or a null string, where the signature cannot hold it.
 - The engine writes one message at a time. `Engine::message` refuses a

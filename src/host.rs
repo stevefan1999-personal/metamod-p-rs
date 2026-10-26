@@ -15,6 +15,17 @@ pub(crate) struct Host {
     engine_tables:           Cell<Option<(enginefuncs_t, NonNull<globalvars_t>)>>,
     pub(crate) engine:       OnceCell<Engine>,
     pub(crate) meta_globals: Cell<Option<NonNull<meta_globals_t>>>,
+    /// Hooks and console commands of the plugin that are on the stack.
+    active_calls:            Cell<usize>,
+}
+
+/// Counts a running hook or console command until it returns or unwinds.
+pub(crate) struct ActiveCall(&'static Cell<usize>);
+
+impl Drop for ActiveCall {
+    fn drop(&mut self) {
+        self.0.set(self.0.get() - 1);
+    }
 }
 
 // SAFETY: built from constants, so no thread holds any of its state.
@@ -23,6 +34,7 @@ static HOST: MainThreadCell<Host> = unsafe {
         engine_tables: Cell::new(None),
         engine:        OnceCell::new(),
         meta_globals:  Cell::new(None),
+        active_calls:  Cell::new(0),
     })
 };
 
@@ -38,6 +50,17 @@ impl Host {
     /// or off the engine thread.
     pub(crate) fn engine() -> Option<&'static Engine> {
         HOST.try_get()?.engine.get()
+    }
+
+    /// Marks a hook or console command as running until the guard drops.
+    pub(crate) fn enter(&'static self) -> ActiveCall {
+        self.active_calls.set(self.active_calls.get() + 1);
+        ActiveCall(&self.active_calls)
+    }
+
+    /// Whether a hook or console command of the plugin is on the stack.
+    pub(crate) fn in_call(&self) -> bool {
+        self.active_calls.get() > 0
     }
 
     pub(crate) fn receive_engine(&self, functions: enginefuncs_t, globals: NonNull<globalvars_t>) {

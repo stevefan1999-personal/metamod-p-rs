@@ -138,6 +138,7 @@ pub(crate) fn dispatch<P: Exported, R: HookReturn>(
 ) -> R::Raw {
     let result = guard(hook, || {
         let engine = Host::engine()?;
+        let _call = Host::get().enter();
         let plugin = P::instance().get().plugin.borrow();
         let result = call(plugin.as_ref()?, engine);
         if result.is_none() {

@@ -157,6 +157,13 @@ pub unsafe fn meta_attach<P: Exported>(
 pub unsafe fn meta_detach<P: Exported>(now: PLUG_LOADTIME, reason: PL_UNLOAD_REASON) -> c_int {
     status("Meta_Detach", || {
         let now = LoadTime::from_raw(now).ok_or("metamod passed an unknown load time")?;
+        // Metamod closes the library after a successful detach, so refuse
+        // while plugin code is on the stack, such as a command that ran
+        // `meta unload` through `server_execute`. Metamod then keeps the
+        // plugin, except for `meta force_unload`.
+        if Host::get().in_call() {
+            return Err("refused while a hook or command of the plugin runs".into());
+        }
         // Take the plugin out before detaching it, so hooks that run meanwhile
         // see no plugin rather than a borrowed one.
         let plugin = P::instance().get().plugin.borrow_mut().take();

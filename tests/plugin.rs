@@ -61,6 +61,9 @@ impl Plugin for TestPlugin {
             let words: Vec<_> = args.iter().map(CStr::to_string_lossy).collect();
             event(format!("rs_hello {words:?} rest={:?}", args.rest()));
         });
+        engine.register_command(c"rs_detach", |_| {
+            event(format!("Meta_Detach in a command: {}", detach_now()));
+        });
         event(format!("attach {now:?}"));
         Ok(Self)
     }
@@ -79,6 +82,10 @@ impl Plugin for TestPlugin {
         event(format!("connect {} {name:?}", player.index()));
         match name.to_bytes() {
             b"handled" => MetaResult::Handled,
+            b"detach" => {
+                event(format!("Meta_Detach in a hook: {}", detach_now()));
+                MetaResult::Ignored
+            }
             b"override" => MetaResult::Override(true),
             b"supercede" => {
                 reject_reason.set("Rust says no");
@@ -114,6 +121,12 @@ impl Plugin for TestPlugin {
         event(format!("precache {path:?}"));
         MetaResult::Supercede(42)
     }
+}
+
+/// Detaches the plugin as `meta unload` would.
+fn detach_now() -> c_int {
+    // SAFETY: called as metamod calls it.
+    unsafe { Meta_Detach(PLUG_LOADTIME::PT_ANYTIME, PL_UNLOAD_REASON::PNL_COMMAND) }
 }
 
 /// Calls the plugin's ClientConnect pre hook like metamod would.
@@ -610,6 +623,28 @@ fn detach_drops_the_plugin_and_its_commands() {
         (returned, loaded.meta_globals.mres),
         (0, META_RES::MRES_IGNORED)
     );
+}
+
+#[test]
+fn detach_is_refused_while_a_hook_or_command_runs() {
+    let loaded = load();
+    loaded.run_command(&["rs_detach"]);
+    connect(&loaded, edict(CONNECTED_PLAYER), c"detach");
+    assert_eq!(
+        events()[1..],
+        [
+            "Meta_Detach in a command: 0",
+            "connect 1 \"detach\"",
+            "Meta_Detach in a hook: 0",
+        ]
+    );
+    loaded.run_command(&["rs_hello"]);
+    assert_eq!(
+        events().last().cloned(),
+        Some("rs_hello [\"rs_hello\"] rest=\"\"".into()),
+        "the plugin is still attached"
+    );
+    assert_eq!(detach_now(), 1, "outside plugin code the detach succeeds");
 }
 
 #[test]
