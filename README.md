@@ -197,7 +197,10 @@ The smoke test:
 5. Checks that the plugin attached and runs, that the ServerActivate hook
    and the command logged their lines, that metamod credits the command
    and cvar to the plugin, that the plugin attaches again after the reload,
-   and that no shared file changed. It fails when the console or
+   and that no shared file changed. The example also has a post hook on an
+   engine function (`precache_model_post` logs the `Returned` value of the
+   first precache) and a `NEW_DLL_FUNCTIONS` hook (`game_shutdown`, at
+   `quit`); both lines must appear. It fails when the console or
    `metamod.log` holds a metamod warning about the plugin (an unset
    `meta_result`, a refused table getter, a failed attach) or a hook panic.
 

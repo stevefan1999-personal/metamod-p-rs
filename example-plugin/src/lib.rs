@@ -1,11 +1,13 @@
 //! A minimal Sven Co-op plugin on the safe metamod-p API: it logs when it
-//! attaches, when a client connects and when a map starts, and adds the
-//! `rs_hello` command and the `rs_greeting` cvar.
+//! attaches, when a client connects, when a map starts, the first model the
+//! game precaches and when the game shuts down, and adds the `rs_hello`
+//! command and the `rs_greeting` cvar.
 
-use std::{error::Error, ffi::CStr};
+use std::{cell::Cell, error::Error, ffi::CStr};
 
 use metamod_p::{
-    CvarFlags, Edict, Engine, LoadTime, MetaResult, Plugin, PluginInfo, RejectReason, StaticCvar,
+    CvarFlags, Edict, Engine, LoadTime, MetaResult, Plugin, PluginInfo, PostResult, RejectReason,
+    Returned, StaticCvar,
 };
 
 static GREETING: StaticCvar = StaticCvar::new(
@@ -15,7 +17,9 @@ static GREETING: StaticCvar = StaticCvar::new(
 );
 
 struct Hello {
-    engine: &'static Engine,
+    engine:          &'static Engine,
+    /// A map precaches hundreds of models; only the first one is logged.
+    logged_precache: Cell<bool>,
 }
 
 #[metamod_p::plugin]
@@ -41,7 +45,10 @@ impl Plugin for Hello {
             );
         });
         log::info!("attached at {now:?}");
-        Ok(Self { engine })
+        Ok(Self {
+            engine,
+            logged_precache: Cell::default(),
+        })
     }
 
     fn client_connect(
@@ -61,6 +68,20 @@ impl Plugin for Hello {
     fn server_activate(&self, edict_count: i32, max_clients: i32) -> MetaResult<()> {
         let map = self.engine.map_name().unwrap_or_default();
         log::info!("map {map} is active with {edict_count} edicts and {max_clients} player slots");
+        MetaResult::Ignored
+    }
+
+    // A post hook on an engine function: it reads what the engine returned.
+    fn precache_model_post(&self, path: &CStr, returned: Returned<i32>) -> PostResult<i32> {
+        if !self.logged_precache.replace(true) {
+            log::info!("first precache: {path:?} got {returned:?}");
+        }
+        PostResult::Ignored
+    }
+
+    // A hook on the extra game DLL functions (NEW_DLL_FUNCTIONS).
+    fn game_shutdown(&self) -> MetaResult<()> {
+        log::info!("the game shuts down");
         MetaResult::Ignored
     }
 }
