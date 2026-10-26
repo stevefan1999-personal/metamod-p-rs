@@ -197,7 +197,9 @@ The smoke test:
 5. Checks that the plugin attached and runs, that the ServerActivate hook
    and the command logged their lines, that metamod credits the command
    and cvar to the plugin, that the plugin attaches again after the reload,
-   and that no shared file changed.
+   and that no shared file changed. It fails when the console or
+   `metamod.log` holds a metamod warning about the plugin (an unset
+   `meta_result`, a refused table getter, a failed attach) or a hook panic.
 
 Set `SVEN_SERVER_DIR` or `STEAM_COMMON` when the dedicated server is not in
 the default Steam library, and `SMOKE_ROOT` to move the isolated root.

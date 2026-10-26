@@ -80,6 +80,11 @@ smoke port='27016' map='hl_c01_a1' root=smoke_root target=plugin_target: (smoke-
   rm -rf "$state" && mkdir -p "$state" && mkfifo "$state/console"
   touch "$state/started"
   cd "$root"
+  # metamod-svencoop appends its warnings and the plugin log lines to
+  # metamod.log in the working directory, also before the first map, when the
+  # console drops them. Start it fresh, so the checks see only this run; rm
+  # instead of truncating, because a symlink would lead into the shared install.
+  rm -f metamod.log && touch metamod.log
   export LD_LIBRARY_PATH="$PWD:$PWD/redist${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   # The holder keeps the pipe open, so the server never reads EOF between commands.
   sleep infinity > "$state/console" &
@@ -105,14 +110,19 @@ smoke port='27016' map='hl_c01_a1' root=smoke_root target=plugin_target: (smoke-
   rg -n -i 'rshello|rust hello|rs_hello|rust_hello' "$log" || true
   failed=0
   check() { rg -q "$2" "$log" && echo "ok: $1" || { echo "FAILED: $1" >&2; failed=1; }; }
-  check 'the plugin attached' '\[RSHELLO\] attached at'
+  # Metamod only warns about a broken plugin and keeps it, and the plugin
+  # logs a contained panic as an error, so the positive checks can miss both.
+  refuse() { if rg -n "$2" "$log" metamod.log; then echo "FAILED: $1" >&2; failed=1; else echo "ok: $1"; fi; }
+  check 'the plugin attached at startup' '\[RSHELLO\] attached at Startup'
   check 'meta list shows the plugin running' 'Rust Hello.* RUN '
   check 'the ServerActivate hook logged the map' '\[RSHELLO\] map {{map}} is active'
-  check 'rs_hello ran its closure and read the cvar' '\[RSHELLO\] rs_hello: Hello from Rust'
+  check 'rs_hello ran its closure and read the cvar' '\[RSHELLO\] rs_hello: Hello from Rust \(arguments: "from the smoke test"\)'
   check 'metamod credits rs_hello to the plugin' 'Rust Hello +rs_hello'
   check 'metamod credits rs_greeting to the plugin' 'Rust Hello +rs_greeting +[0-9.]+ +Hello from Rust'
   check 'the plugin attached again after meta unload and meta load' '\[RSHELLO\] attached at AnyTime'
   check 'rs_hello works after the reload' 'rs_hello: Hello from Rust \(arguments: "after reload"\)'
+  refuse 'metamod reported no broken plugin and no hook panicked' \
+    "didn't set meta_result|Failure calling|Failed to attach|not valid in Post|panicked"
   # The farm only shares files through symlinks, so none of those may change.
   changed=$(find -L "$root" -newer "$state/started" -type f -print0 \
     | while IFS= read -r -d '' file; do if test -L "$file"; then echo "$file"; fi; done)
