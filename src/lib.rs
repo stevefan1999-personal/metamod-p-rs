@@ -1,5 +1,9 @@
 #![feature(trivial_bounds)]
 
+mod main_thread;
+
+pub use main_thread::MainThreadCell;
+
 /// Raw bindgen output for the selected metamod headers (`fallguys` feature:
 /// metamod-svencoop, default: Metamod-P). Everything here is `unsafe` to use.
 #[allow(
