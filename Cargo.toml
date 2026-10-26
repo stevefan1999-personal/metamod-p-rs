@@ -8,6 +8,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
+log = "0.4"
 const-default = { version = "1.0.0", features = ["std", "derive"] }
 
 [build-dependencies]
