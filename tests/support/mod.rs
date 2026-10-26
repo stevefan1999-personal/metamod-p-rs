@@ -420,6 +420,12 @@ pub struct Loaded {
 /// `hl_c01_a1` running. Each call makes a new edict array, as a new map
 /// can.
 pub fn boot() -> (enginefuncs_t, *mut globalvars_t) {
+    // The plugin keeps its state in statics, and the first test thread owns
+    // them; plain `cargo test` runs every test in one process.
+    assert!(
+        std::env::var_os("NEXTEST").is_some(),
+        "run these tests with cargo nextest: each test needs its own process"
+    );
     let edicts = Box::leak(vec![edict_t::default(); EDICT_COUNT].into_boxed_slice());
     edicts[CONNECTED_PLAYER as usize].v.flags = FL_CLIENT as c_int;
     edicts[FREE_SLOT as usize].free = 1;
