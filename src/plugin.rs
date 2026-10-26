@@ -267,9 +267,14 @@ plugin_trait! {
         /// A client sends a command; read it with [`Engine::command_args`].
         fn client_command / client_command_post(player: Edict)
             => pfnClientCommand(player: *mut edict_t);
-        /// A client changes its user info (`\key\value` pairs).
-        fn client_user_info_changed / client_user_info_changed_post(player: Edict, info: &CStr)
-            => pfnClientUserInfoChanged(player: *mut edict_t, info: *mut c_char);
+        /// A client changes its user info. `info` is the engine's buffer of
+        /// `\key\value` pairs. It is a raw pointer because the usual job of
+        /// this hook, `pfnSetClientKeyValue` through [`Engine::functions`],
+        /// writes the buffer during the call; read keys with `pfnInfoKeyValue`.
+        fn client_user_info_changed / client_user_info_changed_post(
+            player: Edict,
+            info: *mut c_char,
+        ) => pfnClientUserInfoChanged(player: *mut edict_t, info: *mut c_char);
         /// A map has loaded and spawned its entities.
         fn server_activate / server_activate_post(edict_count: i32, max_clients: i32)
             => pfnServerActivate(_edicts: *mut edict_t, edict_count: c_int, max_clients: c_int);
