@@ -1,6 +1,6 @@
 use std::{
     cell::{Cell, RefCell},
-    ffi::CStr,
+    ffi::{c_char, CStr},
     ptr::{addr_of, NonNull},
 };
 
@@ -193,23 +193,39 @@ impl Engine {
         }
     }
 
-    /// Precaches a model and returns its model index. The engine keeps the
-    /// path pointer for the whole map, which is why it must be `'static`.
-    pub fn precache_model(&self, path: &'static CStr) -> i32 {
-        // SAFETY: the path outlives the engine's precache table.
-        unsafe { host_call!(self.functions, pfnPrecacheModel(path.as_ptr().cast_mut())) }
+    /// Precaches a model and returns its model index.
+    ///
+    /// The engine keeps the path pointer for the whole map, and a pointer
+    /// into the plugin would dangle after `meta unload`. So the path is
+    /// copied into the engine's string pool first, which lives as long as
+    /// the map. GoldSrc reads backslashes in pooled strings as escapes: use
+    /// `/` in paths.
+    pub fn precache_model(&self, path: &CStr) -> i32 {
+        // SAFETY: the pooled copy lives as long as the precache table.
+        unsafe { host_call!(self.functions, pfnPrecacheModel(self.pooled(path))) }
     }
 
     /// Precaches a sound and returns its index; see [`Engine::precache_model`].
-    pub fn precache_sound(&self, path: &'static CStr) -> i32 {
-        // SAFETY: the path outlives the engine's precache table.
-        unsafe { host_call!(self.functions, pfnPrecacheSound(path.as_ptr().cast_mut())) }
+    pub fn precache_sound(&self, path: &CStr) -> i32 {
+        // SAFETY: the pooled copy lives as long as the precache table.
+        unsafe { host_call!(self.functions, pfnPrecacheSound(self.pooled(path))) }
     }
 
     /// Adds a file the clients must download; see [`Engine::precache_model`].
-    pub fn precache_generic(&self, path: &'static CStr) -> i32 {
-        // SAFETY: the path outlives the engine's precache table.
-        unsafe { host_call!(self.functions, pfnPrecacheGeneric(path.as_ptr().cast_mut())) }
+    pub fn precache_generic(&self, path: &CStr) -> i32 {
+        // SAFETY: the pooled copy lives as long as the precache table.
+        unsafe { host_call!(self.functions, pfnPrecacheGeneric(self.pooled(path))) }
+    }
+
+    /// Copies `text` into the engine's string pool, which the engine frees
+    /// with the map, and returns the engine's copy.
+    fn pooled(&self, text: &CStr) -> *mut c_char {
+        // SAFETY: AllocString copies the text and SzFromIndex returns that
+        // copy, which the engine owns.
+        unsafe {
+            let index = host_call!(self.functions, pfnAllocString(text.as_ptr()));
+            host_call!(self.functions, pfnSzFromIndex(index)).cast_mut()
+        }
     }
 
     /// Seconds since the map started.

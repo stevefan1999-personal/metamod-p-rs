@@ -7,7 +7,7 @@ mod support;
 use std::{
     cell::{Cell, RefCell},
     error::Error,
-    ffi::{c_char, c_int, CStr},
+    ffi::{c_char, c_int, CStr, CString},
     panic, ptr,
 };
 
@@ -539,16 +539,22 @@ fn printed_and_stuffed_text_is_never_a_format_string() {
 }
 
 #[test]
-fn precache_passes_the_static_path() {
+fn precache_hands_the_engine_a_pooled_copy_of_the_path() {
     load();
     clear_calls();
-    assert_eq!(
-        engine().precache_model(c"models/cs16/v_ak47.mdl"),
-        PRECACHED_MODEL_INDEX
-    );
+    let path = CString::new("models/cs16/v_ak47.mdl").expect("no NUL");
+    assert_eq!(engine().precache_model(&path), PRECACHED_MODEL_INDEX);
+    // The engine keeps its copy for the map; the plugin's may go away.
+    drop(path);
     assert_eq!(
         calls(),
-        [Call::PrecacheModel("models/cs16/v_ak47.mdl".into())]
+        [
+            Call::AllocString("models/cs16/v_ak47.mdl".into()),
+            Call::PrecacheModel {
+                path:   "models/cs16/v_ak47.mdl".into(),
+                pooled: true,
+            },
+        ]
     );
 }
 

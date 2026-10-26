@@ -44,7 +44,12 @@ pub enum Call {
         format: String,
         text:   String,
     },
-    PrecacheModel(String),
+    AllocString(String),
+    PrecacheModel {
+        path:   String,
+        /// Whether the engine got a string from its own pool.
+        pooled: bool,
+    },
     CvarRegister {
         name:   String,
         string: String,
@@ -78,6 +83,8 @@ thread_local! {
     static COMMANDS: RefCell<Vec<(String, unsafe extern "C" fn())>> = RefCell::default();
     static WORDS: RefCell<Vec<CString>> = RefCell::default();
     static REST: RefCell<CString> = RefCell::default();
+    /// Strings that `AllocString` added to the pool, numbered after `STRINGS`.
+    static POOLED: RefCell<Vec<CString>> = RefCell::default();
 }
 
 /// Every call recorded so far.
@@ -168,14 +175,28 @@ unsafe extern "C" fn client_command(player: *mut edict_t, format: *mut c_char, m
 }
 
 unsafe extern "C" fn precache_model(path: *mut c_char) -> c_int {
-    record(Call::PrecacheModel(text(path)));
+    let pooled = POOLED.with_borrow(|pooled| pooled.iter().any(|copy| copy.as_ptr() == path));
+    record(Call::PrecacheModel {
+        path: text(path),
+        pooled,
+    });
     PRECACHED_MODEL_INDEX
 }
 
+unsafe extern "C" fn alloc_string(value: *const c_char) -> c_int {
+    record(Call::AllocString(text(value)));
+    POOLED.with_borrow_mut(|pooled| {
+        pooled.push(CString::new(text(value)).expect("no NUL"));
+        c_int::try_from(STRINGS.len() + pooled.len() - 1).expect("index")
+    })
+}
+
 unsafe extern "C" fn string_from_index(offset: c_int) -> *const c_char {
-    STRINGS[usize::try_from(offset).expect("offset")..]
-        .as_ptr()
-        .cast()
+    let offset = usize::try_from(offset).expect("offset");
+    match offset.checked_sub(STRINGS.len()) {
+        Some(index) => POOLED.with_borrow(|pooled| pooled[index].as_ptr()),
+        None => STRINGS[offset..].as_ptr().cast(),
+    }
 }
 
 unsafe extern "C" fn entity_of_index(index: c_int) -> *mut edict_t {
@@ -347,6 +368,7 @@ fn engine_functions() -> enginefuncs_t {
         pfnClientCommand: Some(client_command),
         pfnPrecacheModel: Some(precache_model),
         pfnSzFromIndex: Some(string_from_index),
+        pfnAllocString: Some(alloc_string),
         pfnPEntityOfEntIndex: Some(entity_of_index),
         pfnIndexOfEdict: Some(index_of_edict),
         pfnCVarRegister: Some(cvar_register),
