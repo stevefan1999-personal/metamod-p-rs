@@ -734,6 +734,14 @@ fn panicking_detach_still_unloads_the_plugin() {
 }
 
 #[test]
+fn engine_hands_out_metamods_copy_of_the_game_tables() {
+    let loaded = load();
+    let tables = engine().game_functions().expect("game tables");
+    assert_eq!(tables.dllapi_table, loaded.game_functions.dllapi_table);
+    assert_eq!(tables.newapi_table, loaded.game_functions.newapi_table);
+}
+
+#[test]
 fn null_pointers_into_the_entry_points_are_refused() {
     // SAFETY: metamod could pass null; the plugin must refuse, not crash.
     unsafe {

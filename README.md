@@ -140,7 +140,7 @@ The crate type must be `cdylib`. The full example is in
 | Entities | `Engine::edict(index)`, `Engine::players()`, `Edict::index`, `is_valid`, and entvars accessors such as `health`/`set_health` |
 | Globals | `Engine::map_name`, `time`, `max_clients`, `string(string_t)` (`unsafe`: engine strings only) |
 | Logging | the `log` crate: errors go to mutil `LogError`, warnings and info to `LogMessage`, debug and trace to `LogDeveloper` |
-| Anything else | `Engine::functions`, `util_functions`, `globals` and `metamod_p::sys` (`unsafe`) |
+| Anything else | `Engine::functions`, `util_functions`, `game_functions` (calls the game DLL and skips all plugins, as `MDLL_*` does), `globals` and `metamod_p::sys` (`unsafe`) |
 
 Text is always passed to C `printf`-style functions as a `%s` argument, so
 a `%` in player input cannot be read as a format.

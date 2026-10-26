@@ -7,7 +7,10 @@ use std::{
 use crate::{
     command::Command,
     ffi::{c_str, to_c_string},
-    sys::{enginefuncs_t, globalvars_t, mutil_funcs_t, plid_t, string_t, ALERT_TYPE, PRINT_TYPE},
+    sys::{
+        enginefuncs_t, gamedll_funcs_t, globalvars_t, mutil_funcs_t, plid_t, string_t, ALERT_TYPE,
+        PRINT_TYPE,
+    },
     Edict,
 };
 
@@ -36,6 +39,8 @@ pub struct Engine {
     pub(crate) plugin_id:       plid_t,
     pub(crate) commands:        RefCell<Vec<Command>>,
     pub(crate) writing_message: Cell<bool>,
+    /// What `Meta_Attach` received.
+    pub(crate) game_functions:  Cell<Option<gamedll_funcs_t>>,
 }
 
 /// Where [`Engine::alert`] sends its text.
@@ -110,6 +115,7 @@ impl Engine {
             plugin_id,
             commands: RefCell::default(),
             writing_message: Cell::default(),
+            game_functions: Cell::default(),
         }
     }
 
@@ -121,6 +127,14 @@ impl Engine {
     /// The raw metamod utility table.
     pub fn util_functions(&self) -> &mutil_funcs_t {
         &self.util
+    }
+
+    /// Metamod's copy of the game DLL tables for this plugin, to call the
+    /// game directly and skip every plugin's hooks, as the `MDLL_*` macros
+    /// of C plugins do. The tables stay valid while the plugin is loaded;
+    /// `None` if metamod passed none.
+    pub fn game_functions(&self) -> Option<gamedll_funcs_t> {
+        self.game_functions.get()
     }
 
     /// The plugin id that the metamod utility functions expect.

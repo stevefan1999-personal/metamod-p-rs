@@ -8,9 +8,9 @@ use std::{
 };
 
 use metamod_p::sys::{
-    cvar_t, edict_t, enginefuncs_t, globalvars_t, meta_globals_t, mutil_funcs_t, plid_t,
-    plugin_info_t, ALERT_TYPE, DLL_FUNCTIONS, FL_CLIENT, INTERFACE_VERSION, META_FUNCTIONS,
-    PLUG_LOADTIME, PRINT_TYPE,
+    cvar_t, edict_t, enginefuncs_t, gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t,
+    plid_t, plugin_info_t, ALERT_TYPE, DLL_FUNCTIONS, FL_CLIENT, INTERFACE_VERSION, META_FUNCTIONS,
+    NEW_DLL_FUNCTIONS, PLUG_LOADTIME, PRINT_TYPE,
 };
 
 pub const MAX_CLIENTS: c_int = 4;
@@ -409,9 +409,11 @@ fn util_functions() -> mutil_funcs_t {
 
 /// A plugin loaded into the fake host, the way metamod loads it.
 pub struct Loaded {
-    pub info:         *mut plugin_info_t,
-    pub tables:       META_FUNCTIONS,
-    pub meta_globals: &'static mut meta_globals_t,
+    pub info:           *mut plugin_info_t,
+    pub tables:         META_FUNCTIONS,
+    pub meta_globals:   &'static mut meta_globals_t,
+    /// The game DLL tables that metamod lent the plugin.
+    pub game_functions: gamedll_funcs_t,
 }
 
 /// Sets up the edicts and globals that `GiveFnptrsToDll` hands out, with
@@ -447,6 +449,10 @@ pub fn try_load(now: PLUG_LOADTIME) -> (c_int, Loaded) {
     let mut info = ptr::null_mut();
     let mut tables = META_FUNCTIONS::default();
     let meta_globals = Box::leak(Box::new(meta_globals_t::default()));
+    // metamod-svencoop has one more table, so fill a default value.
+    let game_functions = Box::leak(Box::<gamedll_funcs_t>::default());
+    game_functions.dllapi_table = Box::leak(Box::<DLL_FUNCTIONS>::default());
+    game_functions.newapi_table = Box::leak(Box::<NEW_DLL_FUNCTIONS>::default());
     // SAFETY: every pointer is valid, as metamod would pass it.
     let attached = unsafe {
         crate::GiveFnptrsToDll(&mut functions, globals);
@@ -455,7 +461,7 @@ pub fn try_load(now: PLUG_LOADTIME) -> (c_int, Loaded) {
             1,
             "Meta_Query"
         );
-        crate::Meta_Attach(now, &mut tables, meta_globals, ptr::null_mut())
+        crate::Meta_Attach(now, &mut tables, meta_globals, game_functions)
     };
     (
         attached,
@@ -463,6 +469,7 @@ pub fn try_load(now: PLUG_LOADTIME) -> (c_int, Loaded) {
             info,
             tables,
             meta_globals,
+            game_functions: *game_functions,
         },
     )
 }

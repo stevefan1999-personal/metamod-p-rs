@@ -121,7 +121,7 @@ pub unsafe fn meta_attach<P: Exported>(
     now: PLUG_LOADTIME,
     function_tables: *mut META_FUNCTIONS,
     meta_globals: *mut meta_globals_t,
-    _game_functions: *mut gamedll_funcs_t,
+    game_functions: *mut gamedll_funcs_t,
 ) -> c_int {
     status("Meta_Attach", || {
         let now = LoadTime::from_raw(now).ok_or("metamod passed an unknown load time")?;
@@ -136,6 +136,11 @@ pub unsafe fn meta_attach<P: Exported>(
             .engine
             .get()
             .ok_or("Meta_Query did not run before Meta_Attach")?;
+        // SAFETY: metamod passes null or its copy of the game tables for this
+        // plugin, which it frees only after the plugin unloads.
+        engine
+            .game_functions
+            .set(unsafe { game_functions.as_ref() }.copied());
         let instance = P::instance().get();
         if instance.plugin.borrow().is_some() {
             return Err("the plugin is already attached".into());
