@@ -97,7 +97,7 @@ impl Engine {
     /// Every function in `functions` and `util` must be a valid host
     /// function, `globals` must point to the engine globals and `plugin_id`
     /// to this plugin's info, both for as long as the handle is used.
-    pub unsafe fn from_raw(
+    pub(crate) unsafe fn from_raw(
         functions: enginefuncs_t,
         globals: NonNull<globalvars_t>,
         util: mutil_funcs_t,
