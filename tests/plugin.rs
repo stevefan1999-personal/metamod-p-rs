@@ -75,6 +75,9 @@ impl Plugin for TestPlugin {
 
     fn detach(self, now: LoadTime, reason: UnloadReason) {
         event(format!("detach {now:?} {reason:?}"));
+        if reason == UnloadReason::Reload {
+            panic!("detach failed");
+        }
     }
 
     fn client_connect(
@@ -668,6 +671,31 @@ fn failed_attach_drops_the_commands_it_registered() {
         );
     }
     assert!(!events().iter().any(|event| event.starts_with("rs_hello")));
+}
+
+#[test]
+fn panicking_detach_still_unloads_the_plugin() {
+    let loaded = load();
+    clear_calls();
+    // SAFETY: called as metamod would.
+    assert_eq!(
+        unsafe { Meta_Detach(PLUG_LOADTIME::PT_ANYTIME, PL_UNLOAD_REASON::PNL_RELOAD) },
+        1
+    );
+    assert!(
+        calls().iter().any(|call| {
+            matches!(
+                call,
+                Call::Log { function: "LogError", text, .. } if text.contains("detach failed")
+            )
+        }),
+        "{:?}",
+        calls()
+    );
+    loaded.run_command(&["rs_hello"]);
+    assert!(calls()
+        .iter()
+        .any(|call| matches!(call, Call::Log { text, .. } if text.contains("no handler"))));
 }
 
 #[test]

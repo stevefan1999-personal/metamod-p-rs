@@ -183,8 +183,12 @@ pub unsafe fn meta_detach<P: Exported>(now: PLUG_LOADTIME, reason: PL_UNLOAD_REA
         if let Some(engine) = Host::engine() {
             engine.commands.borrow_mut().clear();
         }
+        // The plugin state is gone now, so a panic in its detach must not
+        // make metamod keep the plugin running.
         if let Some(plugin) = plugin {
-            plugin.detach(now, UnloadReason::from_raw(reason));
+            guard("Plugin::detach", || {
+                plugin.detach(now, UnloadReason::from_raw(reason))
+            });
         }
         Ok(())
     })
