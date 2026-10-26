@@ -42,8 +42,10 @@ impl MessageDestination {
         match self {
             Self::Broadcast => (code(sys::MSG_BROADCAST), None, ptr::null_mut()),
             Self::All => (code(sys::MSG_ALL), None, ptr::null_mut()),
-            Self::One(player) => (code(sys::MSG_ONE), None, player.as_ptr()),
-            Self::OneUnreliable(player) => (code(sys::MSG_ONE_UNRELIABLE), None, player.as_ptr()),
+            Self::One(player) => (code(sys::MSG_ONE), None, player.checked_ptr()),
+            Self::OneUnreliable(player) => {
+                (code(sys::MSG_ONE_UNRELIABLE), None, player.checked_ptr())
+            }
             Self::Visible(origin) => (code(sys::MSG_PVS), Some(origin), ptr::null_mut()),
             Self::VisibleReliable(origin) => (code(sys::MSG_PVS_R), Some(origin), ptr::null_mut()),
             Self::Audible(origin) => (code(sys::MSG_PAS), Some(origin), ptr::null_mut()),
@@ -103,19 +105,23 @@ impl Engine {
     /// `MESSAGE_END`. The message always ends, also when `write` panics:
     /// a message left open makes the engine stop with a fatal error at the
     /// next `MESSAGE_BEGIN`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the receiving player of `destination` is not valid.
     pub fn message(
         &self,
         destination: MessageDestination,
         kind: MessageType,
         write: impl FnOnce(&mut MessageWriter<'_>),
     ) -> Result<(), MessageError> {
+        let (code, origin, receiver) = destination.raw();
         if self.writing_message.replace(true) {
             return Err(MessageError::AlreadyWriting);
         }
-        let (code, origin, receiver) = destination.raw();
         let origin = origin.map_or(ptr::null(), |origin| origin.as_ptr());
         // SAFETY: the engine copies the origin during the call and `receiver`
-        // is null or an engine edict.
+        // is null or an edict of the current array.
         unsafe {
             host_call!(
                 self.functions,

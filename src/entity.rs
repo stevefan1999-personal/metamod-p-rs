@@ -2,6 +2,7 @@ use std::{
     ffi::c_int,
     fmt,
     hash::{Hash, Hasher},
+    mem,
     ptr::{addr_of, addr_of_mut, NonNull},
 };
 
@@ -15,8 +16,16 @@ use crate::{
 ///
 /// A handle remembers the slot's serial number, which the engine bumps each
 /// time it frees the slot, so [`Edict::is_valid`] tells a live entity from a
-/// slot that was freed or reused since. Hooks hand out fresh handles; check
-/// stored ones with `is_valid` before use and drop them when the map changes.
+/// slot that was freed or reused since. `is_valid` also checks, by address
+/// only, that the handle points into the engine's current edict array, so a
+/// handle from an earlier map is never read through.
+///
+/// Every method that reads or writes the entity, or passes it to the
+/// engine, panics when the handle is not valid; the hook boundary catches
+/// the panic. Hooks hand out fresh handles: check stored ones with
+/// `is_valid`. A new entity that reuses a slot with the same serial number
+/// still counts as valid, as in a player slot after a reconnect or after a
+/// map change, so drop stored handles when the map changes.
 #[derive(Clone, Copy)]
 pub struct Edict {
     raw:    NonNull<edict_t>,
@@ -47,28 +56,37 @@ impl Edict {
         })
     }
 
-    /// The raw edict pointer, for calls the safe API does not wrap.
+    /// The raw edict pointer, for calls the safe API does not wrap. It is
+    /// not checked; see [`Edict::is_valid`].
     pub fn as_ptr(&self) -> *mut edict_t {
         self.raw.as_ptr()
     }
 
-    /// Whether the slot still holds the entity this handle was made for.
+    /// Whether the handle points into the engine's current edict array and
+    /// its slot still holds the entity this handle was made for.
     pub fn is_valid(&self) -> bool {
-        // SAFETY: see `Edict::vars`; both fields are plain integers.
-        let (free, serial) = unsafe {
-            (
-                addr_of!((*self.raw.as_ptr()).free).read(),
-                addr_of!((*self.raw.as_ptr()).serialnumber).read(),
-            )
-        };
-        free == 0 && serial == self.serial
+        self.in_current_array() && {
+            // SAFETY: `raw` points to an edict of the current array; both
+            // fields are plain integers.
+            let (free, serial) = unsafe {
+                (
+                    addr_of!((*self.raw.as_ptr()).free).read(),
+                    addr_of!((*self.raw.as_ptr()).serialnumber).read(),
+                )
+            };
+            free == 0 && serial == self.serial
+        }
     }
 
     /// Entity index: 0 is the world, `1..=max_clients` are player slots.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the handle is not valid.
     pub fn index(&self) -> i32 {
-        // SAFETY: `raw` points into the edict array, which is all that
-        // IndexOfEdict needs to compute the slot number.
-        unsafe { host_call!(self.engine.functions, pfnIndexOfEdict(self.raw.as_ptr())) }
+        // SAFETY: the pointer is an edict of the current array, which is all
+        // that IndexOfEdict needs to compute the slot number.
+        unsafe { host_call!(self.engine.functions, pfnIndexOfEdict(self.checked_ptr())) }
     }
 
     /// Whether a client is in the game in this slot (`FL_CLIENT`).
@@ -76,14 +94,49 @@ impl Edict {
         self.flags() & FL_CLIENT as i32 != 0
     }
 
-    // SAFETY (for every accessor): `raw` points into the engine's edict
-    // array, which stays allocated while the server runs. Accessors read and
-    // write single plain-old-data fields through raw pointers and never make
-    // references, so a stale handle sees another entity's data, not freed
-    // memory.
+    /// The pointer of a valid handle, for the engine.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the handle is not valid.
+    pub(crate) fn checked_ptr(&self) -> *mut edict_t {
+        assert!(
+            self.is_valid(),
+            "stale Edict handle: check is_valid before use"
+        );
+        self.raw.as_ptr()
+    }
+
+    /// Whether `raw` points to a slot of the engine's current edict array.
+    /// Only the address is used: the engine may have moved the array for a
+    /// new map, and the old memory may hold anything now.
+    fn in_current_array(&self) -> bool {
+        // SAFETY: EntOffsetOfPEntity only subtracts the start of the current
+        // edict array from the pointer, and `globals` points to the engine
+        // globals while loaded.
+        let (offset, count) = unsafe {
+            (
+                host_call!(
+                    self.engine.functions,
+                    pfnEntOffsetOfPEntity(self.raw.as_ptr())
+                ),
+                addr_of!((*self.engine.globals.as_ptr()).maxEntities).read(),
+            )
+        };
+        let size = mem::size_of::<edict_t>();
+        match (usize::try_from(offset), usize::try_from(count)) {
+            (Ok(offset), Ok(count)) => offset % size == 0 && offset / size < count,
+            _ => false,
+        }
+    }
+
+    // SAFETY (for every accessor): `checked_ptr` makes sure that the handle
+    // points to a live edict of the current array. Accessors read and write
+    // single plain-old-data fields through raw pointers and never make
+    // references.
     fn vars(&self) -> *mut entvars_t {
         // SAFETY: only computes a field address, see above.
-        unsafe { addr_of_mut!((*self.raw.as_ptr()).v) }
+        unsafe { addr_of_mut!((*self.checked_ptr()).v) }
     }
 }
 

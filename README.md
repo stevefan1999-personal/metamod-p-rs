@@ -121,8 +121,11 @@ The crate type must be `cdylib`. The full example is in
   nested message, but it cannot see messages of the game or other plugins:
   do not start a message in a hook that runs between their
   `MESSAGE_BEGIN` and `MESSAGE_END`, such as `write_byte`.
-- Stored `Edict` handles can go stale: check `is_valid` before use and drop
-  them when the map changes.
+- `Edict` methods that read or write the entity, or pass it to the engine,
+  panic when `is_valid` is false: the slot was freed, or the handle points
+  into the edict array of an earlier map. `is_valid` cannot see a new
+  entity that reuses a slot with the same serial number, so drop stored
+  handles when the map changes.
 
 ### API overview
 

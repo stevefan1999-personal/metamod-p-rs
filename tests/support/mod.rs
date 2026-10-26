@@ -211,6 +211,12 @@ unsafe extern "C" fn index_of_edict(edict: *const edict_t) -> c_int {
     index_of(edict)
 }
 
+/// The byte offset from the start of the current edict array, as the engine
+/// computes it; far pointers give a negative offset.
+unsafe extern "C" fn entity_offset(edict: *const edict_t) -> c_int {
+    c_int::try_from(edict as isize - EDICTS.get() as isize).unwrap_or(c_int::MIN)
+}
+
 fn find_cvar(name: *const c_char) -> *mut cvar_t {
     let name = text(name);
     CVARS
@@ -371,6 +377,7 @@ fn engine_functions() -> enginefuncs_t {
         pfnAllocString: Some(alloc_string),
         pfnPEntityOfEntIndex: Some(entity_of_index),
         pfnIndexOfEdict: Some(index_of_edict),
+        pfnEntOffsetOfPEntity: Some(entity_offset),
         pfnCVarRegister: Some(cvar_register),
         pfnCVarGetPointer: Some(cvar_pointer),
         pfnCVarSetFloat: Some(cvar_set_float),
@@ -408,7 +415,8 @@ pub struct Loaded {
 }
 
 /// Sets up the edicts and globals that `GiveFnptrsToDll` hands out, with
-/// `hl_c01_a1` running.
+/// `hl_c01_a1` running. Each call makes a new edict array, as a new map
+/// can.
 pub fn boot() -> (enginefuncs_t, *mut globalvars_t) {
     let edicts = Box::leak(vec![edict_t::default(); EDICT_COUNT].into_boxed_slice());
     edicts[CONNECTED_PLAYER as usize].v.flags = FL_CLIENT as c_int;
@@ -416,6 +424,7 @@ pub fn boot() -> (enginefuncs_t, *mut globalvars_t) {
     EDICTS.set(edicts.as_mut_ptr());
     let globals = Box::leak(Box::new(globalvars_t {
         maxClients: MAX_CLIENTS,
+        maxEntities: EDICT_COUNT as c_int,
         mapname: MAP_NAME,
         pStringBase: STRINGS.as_ptr().cast(),
         ..Default::default()

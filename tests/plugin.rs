@@ -8,7 +8,8 @@ use std::{
     cell::{Cell, RefCell},
     error::Error,
     ffi::{c_char, c_int, CStr, CString},
-    panic, ptr,
+    panic::{self, AssertUnwindSafe},
+    ptr,
 };
 
 use metamod_p::{
@@ -607,6 +608,37 @@ fn entities_are_checked_against_the_engine() {
     // SAFETY: the fake edict array is plain memory owned by the test.
     unsafe { (*edict(CONNECTED_PLAYER)).serialnumber += 1 };
     assert!(!player.is_valid());
+    assert!(
+        panic::catch_unwind(AssertUnwindSafe(|| player.health())).is_err(),
+        "a stale handle is never read"
+    );
+}
+
+#[test]
+fn handles_into_an_earlier_edict_array_are_not_valid() {
+    load();
+    let player = engine().edict(CONNECTED_PLAYER).expect("player slot");
+    // A new map can get a new edict array.
+    support::boot();
+    assert!(!player.is_valid());
+    assert!(engine()
+        .edict(CONNECTED_PLAYER)
+        .is_some_and(|player| player.is_valid()));
+    clear_calls();
+    let stale_uses = [
+        panic::catch_unwind(AssertUnwindSafe(|| player.index())).is_err(),
+        panic::catch_unwind(AssertUnwindSafe(|| {
+            engine().client_print(player, PrintKind::Chat, "hi")
+        }))
+        .is_err(),
+        panic::catch_unwind(AssertUnwindSafe(|| {
+            engine().message(MessageDestination::One(player), MessageType(1), |_| {})
+        }))
+        .is_err(),
+    ];
+    assert_eq!(stale_uses, [true; 3], "every use panics");
+    assert_eq!(calls(), [], "the engine never gets the stale pointer");
+    assert_eq!(send_empty_message(), Ok(()), "no message was left open");
 }
 
 #[test]

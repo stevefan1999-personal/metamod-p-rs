@@ -154,13 +154,18 @@ impl Engine {
     }
 
     /// Prints `text` on one client.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `player` is not valid.
     pub fn client_print(&self, player: Edict, kind: PrintKind, text: &str) {
         let text = to_c_string(text);
-        // SAFETY: `player` is an engine edict; the engine ignores non-clients.
+        // SAFETY: `player` is an edict of the current array; the engine
+        // ignores non-clients.
         unsafe {
             host_call!(
                 self.functions,
-                pfnClientPrintf(player.as_ptr(), kind.raw(), text.as_ptr())
+                pfnClientPrintf(player.checked_ptr(), kind.raw(), text.as_ptr())
             )
         }
     }
@@ -188,14 +193,22 @@ impl Engine {
 
     /// Runs `command` in a client's console (`stufftext`). Never pass
     /// unchecked player input: the client executes every command in it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `player` is not valid.
     pub fn client_command(&self, player: Edict, command: &str) {
         let line = to_c_string(&format!("{command}\n"));
         // SAFETY: `%s` keeps the line out of the format string; `player` is
-        // an engine edict and the engine ignores non-clients.
+        // an edict of the current array and the engine ignores non-clients.
         unsafe {
             host_call!(
                 self.functions,
-                pfnClientCommand(player.as_ptr(), c"%s".as_ptr().cast_mut(), line.as_ptr())
+                pfnClientCommand(
+                    player.checked_ptr(),
+                    c"%s".as_ptr().cast_mut(),
+                    line.as_ptr()
+                )
             )
         }
     }
