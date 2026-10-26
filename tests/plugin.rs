@@ -65,7 +65,12 @@ impl Plugin for TestPlugin {
             event(format!("Meta_Detach in a command: {}", detach_now()));
         });
         event(format!("attach {now:?}"));
-        Ok(Self)
+        // Refuse at startup and panic between maps, to test failed attaches.
+        match now {
+            LoadTime::Startup => Err("refused at startup".into()),
+            LoadTime::ChangeLevel => panic!("attach failed"),
+            _ => Ok(Self),
+        }
     }
 
     fn detach(self, now: LoadTime, reason: UnloadReason) {
@@ -645,6 +650,24 @@ fn detach_is_refused_while_a_hook_or_command_runs() {
         "the plugin is still attached"
     );
     assert_eq!(detach_now(), 1, "outside plugin code the detach succeeds");
+}
+
+#[test]
+fn failed_attach_drops_the_commands_it_registered() {
+    for now in [PLUG_LOADTIME::PT_STARTUP, PLUG_LOADTIME::PT_CHANGELEVEL] {
+        let (attached, loaded) = support::try_load(now);
+        assert_eq!(attached, 0, "{now:?}");
+        clear_calls();
+        loaded.run_command(&["rs_hello"]);
+        assert!(
+            calls()
+                .iter()
+                .any(|call| matches!(call, Call::Log { text, .. } if text.contains("no handler"))),
+            "{now:?}: {:?}",
+            calls()
+        );
+    }
+    assert!(!events().iter().any(|event| event.starts_with("rs_hello")));
 }
 
 #[test]

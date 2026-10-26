@@ -424,37 +424,38 @@ pub fn boot() -> (enginefuncs_t, *mut globalvars_t) {
 }
 
 /// Runs the entry points in metamod's order: `GiveFnptrsToDll`,
-/// `Meta_Query`, `Meta_Attach`.
+/// `Meta_Query`, `Meta_Attach`. Attaching at `PT_ANYTIME` must succeed.
 pub fn load() -> Loaded {
+    let (attached, loaded) = try_load(PLUG_LOADTIME::PT_ANYTIME);
+    assert_eq!(attached, 1, "Meta_Attach");
+    loaded
+}
+
+/// Like [`load`], but returns what `Meta_Attach` returned for `now`.
+pub fn try_load(now: PLUG_LOADTIME) -> (c_int, Loaded) {
     let (mut functions, globals) = boot();
     let mut util = util_functions();
     let mut info = ptr::null_mut();
     let mut tables = META_FUNCTIONS::default();
     let meta_globals = Box::leak(Box::new(meta_globals_t::default()));
     // SAFETY: every pointer is valid, as metamod would pass it.
-    unsafe {
+    let attached = unsafe {
         crate::GiveFnptrsToDll(&mut functions, globals);
         assert_eq!(
             crate::Meta_Query(c"5:17".as_ptr().cast_mut(), &mut info, &mut util),
             1,
             "Meta_Query"
         );
-        assert_eq!(
-            crate::Meta_Attach(
-                PLUG_LOADTIME::PT_ANYTIME,
-                &mut tables,
-                meta_globals,
-                ptr::null_mut()
-            ),
-            1,
-            "Meta_Attach"
-        );
-    }
-    Loaded {
-        info,
-        tables,
-        meta_globals,
-    }
+        crate::Meta_Attach(now, &mut tables, meta_globals, ptr::null_mut())
+    };
+    (
+        attached,
+        Loaded {
+            info,
+            tables,
+            meta_globals,
+        },
+    )
 }
 
 impl Loaded {

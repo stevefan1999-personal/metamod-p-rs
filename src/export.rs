@@ -140,8 +140,17 @@ pub unsafe fn meta_attach<P: Exported>(
         if instance.plugin.borrow().is_some() {
             return Err("the plugin is already attached".into());
         }
-        let plugin = P::attach(engine, now)?;
-        *instance.plugin.borrow_mut() = Some(plugin);
+        match guard("Plugin::attach", || P::attach(engine, now)) {
+            Some(Ok(plugin)) => *instance.plugin.borrow_mut() = Some(plugin),
+            failed => {
+                // Metamod keeps a plugin that failed to attach loaded, so the
+                // commands that attach registered must not run.
+                engine.commands.borrow_mut().clear();
+                return Err(failed
+                    .and_then(Result::err)
+                    .unwrap_or_else(|| "Plugin::attach panicked".into()));
+            }
+        }
         [tables.pfnGetEntityAPI2, tables.pfnGetEntityAPI2_Post] = dll_hooks::getters::<P>();
         [
             tables.pfnGetNewDLLFunctions,
