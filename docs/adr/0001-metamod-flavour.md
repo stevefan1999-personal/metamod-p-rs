@@ -31,10 +31,22 @@ Three Metamod flavours exist:
    own engine (`engine_i686.so`), so ReHLDS cannot replace it.
 3. The Metamod-P v1.21p109 HLSDK ends `enginefuncs_s` with
    `pfnPEntityOfEntIndexAllEntities` (from the Half-Life 25th anniversary
-   SDK). The metamod-svencoop HLSDK does not have it. On i686 the table is
-   636 bytes with Metamod-P headers and 632 bytes with metamod-svencoop
-   headers. A plugin that copies the engine table with the wrong headers
-   reads past the end of the table on Sven Co-op.
+   SDK), but it keeps interface `5:13`. The metamod-svencoop HLSDK does not
+   have the field. On i686 the table is 636 bytes with Metamod-P headers and
+   632 bytes with metamod-svencoop headers.
+   - The copy in `GiveFnptrsToDll` stays in bounds with both header sets.
+     Metamod is built with `__METAMOD_BUILD__`
+     (`metamod-fallguys/metamod/CMakeLists.txt:53`), so the table that it
+     gives to plugins (`g_plugin_engfuncs`, `src/metamod.cpp:79` and
+     `:274`) also holds `extra_functions[16]`
+     (`include/HLSDK/engine/eiface.h:317-320`).
+   - The mismatch is in the hook tables. Metamod allocates the table for
+     a plugin's `GetEngineFunctions` and `GetEngineFunctions_Post` with
+     its own headers, as `sizeof(enginefuncs_t) - sizeof(extra_functions)`
+     (`src/mplugin.cpp:1051-1061`): 632 bytes on Sven Co-op. Metamod accepts
+     a `5:13` plugin, because an older minor interface is compatible
+     (`src/mplugin.cpp:822-825`). A plugin with Metamod-P headers that uses
+     the buffer as a 636-byte `enginefuncs_t` goes past its end.
 4. Metamod refuses plugins with a newer minor interface than its own. A
    plugin built from the `main` headers (`5:17`) was rejected by the
    `v20261009a` release on Sven Co-op: `Plugin '<rust_hello.so>' requires
@@ -60,8 +72,10 @@ Three Metamod flavours exist:
   functions through `metamod_p::sys`.
 - To use a newer interface, bump the submodule and `metamod_release` in
   the `Justfile` together, to a release with that interface.
-- The safe layer writes only the hook entries that a plugin installs, but
-  `GiveFnptrsToDll` copies the whole engine table, so the headers must match
-  the engine. Use `fallguys` for every Sven Co-op build.
+- The safe layer writes only the hook entries that a plugin installs, one
+  at a time through the pointer, so it does not go past the end of a
+  632-byte hook table. The function slots after `pfnEngCheckParm` still
+  differ between the header sets, so use `fallguys` for every Sven Co-op
+  build.
 - If Sven Co-op changes its engine tables, update the `metamod-fallguys`
   submodule and rebuild.
