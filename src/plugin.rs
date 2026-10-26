@@ -10,7 +10,7 @@ use crate::{
         self, edict_t, enginefuncs_t, plugin_info_t, DLL_FUNCTIONS, NEW_DLL_FUNCTIONS,
         PLUG_LOADTIME, PL_UNLOAD_REASON,
     },
-    Edict, Engine, MessageType, MetaResult, Returned,
+    Edict, Engine, MessageType, MetaResult, PostResult, Returned,
 };
 
 /// What `meta list` and `meta info` show about a plugin.
@@ -196,12 +196,12 @@ plugin_trait! {
     /// it: the attribute exports the C entry points that metamod looks for
     /// and installs only the hooks the impl overrides.
     ///
-    /// Hook methods return a [`MetaResult`] and default to
+    /// Pre hooks return a [`MetaResult`] and default to
     /// [`MetaResult::Ignored`]. Each has a `_post` twin that runs after the
-    /// real function; post hooks of functions with a return value also get
-    /// the [`Returned`] values. Hooks take `&self` because the engine calls
-    /// back into plugins while a hook runs: keep mutable state in `Cell` or
-    /// `RefCell` fields.
+    /// real function and returns a [`PostResult`]; post hooks of functions
+    /// with a return value also get the [`Returned`] values. Hooks take
+    /// `&self` because the engine calls back into plugins while a hook
+    /// runs: keep mutable state in `Cell` or `RefCell` fields.
     pub trait Plugin {
         /// What `meta list` and `meta info` show.
         const INFO: PluginInfo;

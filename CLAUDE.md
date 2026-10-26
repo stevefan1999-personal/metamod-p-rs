@@ -8,8 +8,8 @@ usage and `docs/adr/` for decisions.
 - `src/` — the `metamod_p` crate. `sys` is the raw bindgen output
   (`build.rs`, `wrapper.h`). Safe layer: `engine.rs` (Engine wrappers),
   `entity.rs`, `cvar.rs`, `command.rs`, `message.rs`, `logger.rs`,
-  `meta.rs` (MetaResult, Returned), `plugin.rs` (Plugin trait and the
-  hook list), `hooks.rs` (the `plugin_trait!` macro, trampolines,
+  `meta.rs` (MetaResult, PostResult, Returned), `plugin.rs` (Plugin trait
+  and the hook list), `hooks.rs` (the `plugin_trait!` macro, trampolines,
   argument conversion), `export.rs` (C entry points, `export_plugin!`),
   `host.rs` (plugin-wide state), `main_thread.rs` (MainThreadCell).
 - `macros/` — `#[metamod_p::plugin]`, a proc macro without dependencies.

@@ -7,8 +7,8 @@ use crate::{
     export::Exported,
     ffi::{c_str, guard, FALSE, TRUE},
     host::Host,
-    sys::edict_t,
-    Edict, Engine, MetaResult, RejectReason, Returned,
+    sys::{edict_t, META_RES},
+    Edict, Engine, RejectReason, Returned,
 };
 
 /// Maps a hook's Rust return type to the C type metamod expects.
@@ -128,13 +128,13 @@ impl FromRaw<*const f32> for Option<[f32; 3]> {
     }
 }
 
-/// Runs a hook method of the attached plugin and reports its result to
-/// metamod. Every outcome sets `mres`, so metamod never warns about an unset
-/// result: a missing plugin, an unrepresentable argument or a panic all
-/// count as [`MetaResult::Ignored`].
+/// Runs a hook method of the attached plugin and reports its result, a
+/// `META_RES` code and an optional value, to metamod. Every outcome sets
+/// `mres`, so metamod never warns about an unset result: a missing plugin,
+/// an unrepresentable argument or a panic all count as `MRES_IGNORED`.
 pub(crate) fn dispatch<P: Exported, R: HookReturn>(
     hook: &'static str,
-    call: impl FnOnce(&P, &'static Engine) -> Option<MetaResult<R>>,
+    call: impl FnOnce(&P, &'static Engine) -> Option<(META_RES, Option<R>)>,
 ) -> R::Raw {
     let result = guard(hook, || {
         let engine = Host::engine()?;
@@ -147,7 +147,7 @@ pub(crate) fn dispatch<P: Exported, R: HookReturn>(
         result
     })
     .flatten();
-    let (code, value) = result.unwrap_or(MetaResult::Ignored).into_parts();
+    let (code, value) = result.unwrap_or((META_RES::MRES_IGNORED, None));
     Host::set_result(code);
     value.map_or(R::PLACEHOLDER, R::into_raw)
 }
@@ -155,7 +155,7 @@ pub(crate) fn dispatch<P: Exported, R: HookReturn>(
 /// [`dispatch`] for a post hook that reads the call's return values.
 pub(crate) fn dispatch_post<P: Exported, R: HookReturn>(
     hook: &'static str,
-    call: impl FnOnce(&P, &'static Engine, Returned<R>) -> Option<MetaResult<R>>,
+    call: impl FnOnce(&P, &'static Engine, Returned<R>) -> Option<(META_RES, Option<R>)>,
 ) -> R::Raw {
     dispatch::<P, R>(hook, |plugin, engine| {
         call(plugin, engine, Host::returned::<R>()?)
@@ -215,7 +215,7 @@ macro_rules! plugin_trait {
                 // SAFETY: metamod passes arguments that are valid for the call.
                 let $arg: $arg_ty = unsafe { FromRaw::from_raw($arg, engine) }?;
             )*
-            Some(plugin.$hook_post($($arg),*))
+            Some(plugin.$hook_post($($arg),*).into_parts())
         })
     };
     (@post $P:ident $field:ident $hook_post:ident [$($arg:ident: $arg_ty:ty),*] [$ret:ty]) => {
@@ -224,7 +224,7 @@ macro_rules! plugin_trait {
                 // SAFETY: metamod passes arguments that are valid for the call.
                 let $arg: $arg_ty = unsafe { FromRaw::from_raw($arg, engine) }?;
             )*
-            Some(plugin.$hook_post($($arg,)* returned))
+            Some(plugin.$hook_post($($arg,)* returned).into_parts())
         })
     };
 
@@ -262,8 +262,8 @@ macro_rules! plugin_trait {
                     &self,
                     $($arg: $arg_ty,)*
                     $(returned: Returned<$ret>,)?
-                ) -> MetaResult<plugin_trait!(@result $($ret)?)> {
-                    MetaResult::Ignored
+                ) -> PostResult<plugin_trait!(@result $($ret)?)> {
+                    PostResult::Ignored
                 }
             )*)*
         }
@@ -286,7 +286,7 @@ macro_rules! plugin_trait {
                                     // SAFETY: metamod passes arguments that are valid for the call.
                                     let $arg: $arg_ty = unsafe { FromRaw::from_raw($arg, engine) }?;
                                 )*
-                                Some(plugin.$hook($($arg),*))
+                                Some(plugin.$hook($($arg),*).into_parts())
                             },
                         )
                     }

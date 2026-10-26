@@ -6,7 +6,7 @@ GoldSrc servers in safe Rust. The main target is Sven Co-op 5.x with
 
 | Crate or module | What it holds |
 | --- | --- |
-| `metamod_p` | The safe API: `Plugin`, `MetaResult`, `Engine`, `Edict`, cvars, commands, messages, logging. |
+| `metamod_p` | The safe API: `Plugin`, `MetaResult`, `PostResult`, `Engine`, `Edict`, cvars, commands, messages, logging. |
 | `metamod_p::sys` | The raw bindgen output of the metamod and HLSDK headers. |
 | `metamod-p-macros` | The `#[metamod_p::plugin]` attribute (re-exported by `metamod_p`). |
 | `example-plugin` | A small plugin for Sven Co-op. |
@@ -103,13 +103,15 @@ The crate type must be `cdylib`. The full example is in
   runs. Keep mutable state in `Cell` or `RefCell` fields.
 - Each hook has a `_post` twin. Post hooks of functions with a return value
   also get `Returned { original, overridden }`.
-- `MetaResult::Supercede` replaces the return value in pre hooks.
-  `MetaResult::Override` keeps its value only in post hooks; metamod
-  ignores the value of an `Override` from a pre hook.
+- Pre hooks return `MetaResult`: `Supercede(value)` skips the real
+  function and returns `value`. Post hooks return `PostResult`:
+  `Override(value)` returns `value` instead of the real result, unless a
+  pre hook superceded the call. Metamod keeps no value from an override in
+  a pre hook, so `MetaResult` has no `Override`.
 - Everything runs on the engine thread. The API refuses other threads, and
   `log` lines from other threads go to stderr.
 - A panic in a hook is caught at the C boundary and logged as an error;
-  the hook then counts as `MetaResult::Ignored`.
+  the hook then counts as `Ignored`.
 - The plugin refuses to detach while one of its hooks or commands runs,
   because metamod closes the library after a detach. Metamod then keeps
   it loaded, except for `meta force_unload`.

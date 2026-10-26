@@ -14,7 +14,8 @@ use std::{
 use metamod_p::{
     sys::{self, META_RES, PLUG_LOADTIME, PL_UNLOAD_REASON},
     AlertKind, CvarFlags, Edict, Engine, LoadTime, MessageDestination, MessageError, MessageType,
-    MetaResult, Plugin, PluginInfo, PrintKind, RejectReason, Returned, StaticCvar, UnloadReason,
+    MetaResult, Plugin, PluginInfo, PostResult, PrintKind, RejectReason, Returned, StaticCvar,
+    UnloadReason,
 };
 use support::{
     calls, clear_calls, edict, load, Call, CONNECTED_PLAYER, EMPTY_PLAYER_SLOT, FREE_SLOT,
@@ -94,7 +95,6 @@ impl Plugin for TestPlugin {
                 event(format!("Meta_Detach in a hook: {}", detach_now()));
                 MetaResult::Ignored
             }
-            b"override" => MetaResult::Override(true),
             b"supercede" => {
                 reject_reason.set("Rust says no");
                 MetaResult::Supercede(false)
@@ -110,9 +110,9 @@ impl Plugin for TestPlugin {
         _address: &CStr,
         _reject_reason: &mut RejectReason,
         returned: Returned<bool>,
-    ) -> MetaResult<bool> {
+    ) -> PostResult<bool> {
         event(format!("connect_post {returned:?}"));
-        MetaResult::Override(!returned.original)
+        PostResult::Override(!returned.original)
     }
 
     fn think(&self, _entity: Edict) -> MetaResult<()> {
@@ -220,10 +220,9 @@ fn table_request_with_another_interface_version_is_refused() {
 fn hook_results_set_metamod_result_and_return_value() {
     let loaded = load();
     let player = edict(CONNECTED_PLAYER);
-    let cases: [(&CStr, META_RES, c_int, &str); 4] = [
+    let cases: [(&CStr, META_RES, c_int, &str); 3] = [
         (c"ignored", META_RES::MRES_IGNORED, 0, ""),
         (c"handled", META_RES::MRES_HANDLED, 0, ""),
-        (c"override", META_RES::MRES_OVERRIDE, 1, ""),
         (c"supercede", META_RES::MRES_SUPERCEDE, 0, "Rust says no"),
     ];
     for (name, expected_result, expected_return, expected_reason) in cases {

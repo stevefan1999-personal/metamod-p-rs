@@ -20,7 +20,7 @@ pub use engine::{AlertKind, Engine, PrintKind};
 pub use entity::Edict;
 pub use main_thread::MainThreadCell;
 pub use message::{MessageDestination, MessageError, MessageType, MessageWriter};
-pub use meta::{MetaResult, Returned};
+pub use meta::{MetaResult, PostResult, Returned};
 pub use metamod_p_macros::plugin;
 pub use plugin::{LoadTime, Overrides, Plugin, PluginInfo, RejectReason, UnloadReason};
 
