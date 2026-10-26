@@ -16,8 +16,10 @@ use std::{
 pub struct MainThreadCell<T>(T);
 
 // SAFETY: the inner value is only reachable through `try_get`, which refuses
-// every thread except the engine thread, so it is never shared across threads
-// even when `T` is neither `Send` nor `Sync`.
+// every thread except the engine thread. A value can be built on another
+// thread and then move to the engine thread with the cell, so the
+// constructors require `T: Send` (`new`) or a value that holds no thread's
+// state, such as one built from constants (`new_unchecked`).
 unsafe impl<T> Sync for MainThreadCell<T> {}
 
 static ENGINE_THREAD_CLAIMED: AtomicBool = AtomicBool::new(false);
@@ -26,8 +28,32 @@ thread_local! {
     static ON_ENGINE_THREAD: Cell<bool> = const { Cell::new(false) };
 }
 
-impl<T> MainThreadCell<T> {
+impl<T: Send> MainThreadCell<T> {
+    /// Wraps a value for a `static`.
+    ///
+    /// `T` must be `Send`, because the value can be built on one thread and
+    /// read on the engine thread. A `&Cell` from a worker thread is refused:
+    ///
+    /// ```compile_fail,E0277
+    /// use std::cell::Cell;
+    ///
+    /// let shared: &'static Cell<u32> = Box::leak(Box::new(Cell::new(0)));
+    /// let cell = metamod_p::MainThreadCell::new(shared);
+    /// ```
     pub const fn new(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T> MainThreadCell<T> {
+    /// Wraps a value that is not `Send`.
+    ///
+    /// # Safety
+    ///
+    /// No other thread may keep access to `value` or to anything it points
+    /// to, as `T: Send` would guarantee. Values built from constants, such
+    /// as pointers to static data, qualify.
+    pub(crate) const unsafe fn new_unchecked(value: T) -> Self {
         Self(value)
     }
 

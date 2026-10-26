@@ -50,13 +50,16 @@ impl StaticCvar {
     pub const fn new(name: &'static CStr, default: &'static CStr, flags: CvarFlags) -> Self {
         Self {
             name,
-            definition: MainThreadCell::new(UnsafeCell::new(cvar_t {
-                name:   name.as_ptr().cast_mut(),
-                string: default.as_ptr().cast_mut(),
-                flags:  flags.0,
-                value:  0.0,
-                next:   ptr::null_mut(),
-            })),
+            // SAFETY: the definition only points to static strings.
+            definition: unsafe {
+                MainThreadCell::new_unchecked(UnsafeCell::new(cvar_t {
+                    name:   name.as_ptr().cast_mut(),
+                    string: default.as_ptr().cast_mut(),
+                    flags:  flags.0,
+                    value:  0.0,
+                    next:   ptr::null_mut(),
+                }))
+            },
         }
     }
 

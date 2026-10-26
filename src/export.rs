@@ -40,11 +40,15 @@ pub struct Instance<P> {
 }
 
 impl<P: Plugin> Instance<P> {
-    #[allow(clippy::new_without_default)]
-    pub const fn new() -> Self {
-        Self {
-            info:   UnsafeCell::new(P::INFO.to_raw()),
-            plugin: RefCell::new(None),
+    /// The cell for the plugin's static.
+    pub const fn cell() -> MainThreadCell<Self> {
+        // SAFETY: the info only points to static strings, and the plugin
+        // value is created later on the engine thread.
+        unsafe {
+            MainThreadCell::new_unchecked(Self {
+                info:   UnsafeCell::new(P::INFO.to_raw()),
+                plugin: RefCell::new(None),
+            })
         }
     }
 }
@@ -175,7 +179,7 @@ macro_rules! export_plugin {
     ($plugin:ty) => {
         const _: () = {
             static INSTANCE: $crate::MainThreadCell<$crate::export::Instance<$plugin>> =
-                $crate::MainThreadCell::new($crate::export::Instance::new());
+                $crate::export::Instance::cell();
 
             impl $crate::export::Exported for $plugin {
                 fn instance() -> &'static $crate::MainThreadCell<$crate::export::Instance<Self>> {

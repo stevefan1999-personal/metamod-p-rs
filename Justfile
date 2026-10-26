@@ -20,11 +20,13 @@ default:
 build target=plugin_target profile='release':
   cargo build -p example-plugin --target {{target}} --profile {{profile}}
 
-# Run the unit and fake-host tests for both header flavours: just test --target i686-unknown-linux-gnu
+# Run the unit, fake-host and doc tests for both header flavours: just test --target i686-unknown-linux-gnu
 [group('check')]
 test *args:
   cargo nextest run -p metamod-p {{args}}
   cargo nextest run -p metamod-p --features fallguys {{args}}
+  cargo test --doc -p metamod-p
+  cargo test --doc -p metamod-p --features fallguys
 
 # Check formatting and run clippy for both header flavours: just lint
 [group('check')]

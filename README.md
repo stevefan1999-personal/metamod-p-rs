@@ -157,7 +157,7 @@ To install the plugin on a server with metamod-svencoop:
 ## Test
 
 ```sh
-just test             # unit and fake-host tests, both header flavours
+just test             # unit, fake-host and doc tests, both header flavours
 just test --target i686-unknown-linux-gnu
 just lint             # rustfmt and clippy, warnings are errors
 ```

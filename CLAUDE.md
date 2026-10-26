@@ -38,8 +38,10 @@ usage and `docs/adr/` for decisions.
   raw parameter types must match the bindgen field exactly.
 - Never pass text as a C format string: use `"%s"` and pass the text as
   the argument.
-- No `static mut`: use `MainThreadCell`. Every `unsafe` block gets a
-  `// SAFETY:` comment. Panics must not cross into C (`ffi::guard`).
+- No `static mut`: use `MainThreadCell`. Its `new` needs `T: Send`; crate
+  statics of raw pointers to constants use `new_unchecked`. Every `unsafe`
+  block gets a `// SAFETY:` comment. Panics must not cross into C
+  (`ffi::guard`).
 - Metamod copies plugin cvars; read values through the engine's `cvar_t`.
 - Formatting follows `.rustfmt.toml` (nightly rustfmt, 4 spaces).
 - Conventional commits, one logical change each, no `Co-Authored-By`.

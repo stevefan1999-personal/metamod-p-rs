@@ -17,11 +17,14 @@ pub(crate) struct Host {
     pub(crate) meta_globals: Cell<Option<NonNull<meta_globals_t>>>,
 }
 
-static HOST: MainThreadCell<Host> = MainThreadCell::new(Host {
-    engine_tables: Cell::new(None),
-    engine:        OnceCell::new(),
-    meta_globals:  Cell::new(None),
-});
+// SAFETY: built from constants, so no thread holds any of its state.
+static HOST: MainThreadCell<Host> = unsafe {
+    MainThreadCell::new_unchecked(Host {
+        engine_tables: Cell::new(None),
+        engine:        OnceCell::new(),
+        meta_globals:  Cell::new(None),
+    })
+};
 
 impl Host {
     /// # Panics
