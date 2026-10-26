@@ -112,6 +112,12 @@ The crate type must be `cdylib`. The full example is in
   the hook then counts as `MetaResult::Ignored`.
 - Hooks are skipped (`Ignored`) when the engine passes a null or free
   entity, or a null string, where the signature cannot hold it.
+- The engine writes one message at a time. `Engine::message` refuses a
+  second writer, but it cannot see messages of the game or other plugins:
+  do not start a message in a hook that runs between their
+  `MESSAGE_BEGIN` and `MESSAGE_END`, such as `write_byte`.
+- Stored `Edict` handles can go stale: check `is_valid` before use and drop
+  them when the map changes.
 
 ### API overview
 
@@ -178,10 +184,12 @@ The smoke test:
 3. Downloads metamod-svencoop `v20261009a`, checks its SHA-256 and installs
    it with only the example plugin in `plugins.ini`.
 4. Starts `svends_i686` with a console fifo, runs `meta list`, `meta cmds`,
-   `meta cvars` and `rs_hello`, then quits.
+   `meta cvars` and `rs_hello`, unloads and loads the plugin again
+   (`meta unload`, `meta load`), runs `rs_hello` once more and quits.
 5. Checks that the plugin attached and runs, that the ServerActivate hook
    and the command logged their lines, that metamod credits the command
-   and cvar to the plugin, and that no shared file changed.
+   and cvar to the plugin, that the plugin attaches again after the reload,
+   and that no shared file changed.
 
 Set `SVEN_SERVER_DIR` or `STEAM_COMMON` when the dedicated server is not in
 the default Steam library, and `SMOKE_ROOT` to move the isolated root.

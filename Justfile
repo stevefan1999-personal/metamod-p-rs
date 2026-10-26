@@ -68,7 +68,7 @@ smoke-setup root=smoke_root target=plugin_target profile='release': (build targe
   printf 'linux addons/rust_hello/rust_hello.so\n' > "$root/svencoop/addons/metamod/plugins.ini"
   echo "isolated server root ready: $root"
 
-# Boot the isolated server, run `meta list` and `rs_hello`, check the plugin output, stop: just smoke 27016 hl_c01_a1
+# Boot the isolated server, run `meta list`, `rs_hello` and a plugin reload, check the output, stop: just smoke 27016 hl_c01_a1
 [group('smoke')]
 smoke port='27016' map='hl_c01_a1' root=smoke_root target=plugin_target: (smoke-setup root target)
   #!/usr/bin/env bash
@@ -93,6 +93,8 @@ smoke port='27016' map='hl_c01_a1' root=smoke_root target=plugin_target: (smoke-
   done
   rg -q 'Started map' "$state/server.log" || { tail -n 60 "$state/server.log"; echo 'no map after 90 s' >&2; exit 1; }
   printf 'meta list\nmeta cmds\nmeta cvars\nrs_hello from the smoke test\n' > "$state/console"
+  # Unloading and loading again runs detach, dlclose and a fresh attach.
+  printf 'meta unload rust_hello\nmeta load addons/rust_hello/rust_hello.so\nrs_hello after reload\n' > "$state/console"
   sleep 3
   printf 'quit\n' > "$state/console"
   for _ in $(seq 1 20); do kill -0 "$server" 2>/dev/null || break; sleep 1; done
@@ -107,6 +109,8 @@ smoke port='27016' map='hl_c01_a1' root=smoke_root target=plugin_target: (smoke-
   check 'rs_hello ran its closure and read the cvar' '\[RSHELLO\] rs_hello: Hello from Rust'
   check 'metamod credits rs_hello to the plugin' 'Rust Hello +rs_hello'
   check 'metamod credits rs_greeting to the plugin' 'Rust Hello +rs_greeting +[0-9.]+ +Hello from Rust'
+  check 'the plugin attached again after meta unload and meta load' '\[RSHELLO\] attached at AnyTime'
+  check 'rs_hello works after the reload' 'rs_hello: Hello from Rust \(arguments: "after reload"\)'
   # The farm only shares files through symlinks, so none of those may change.
   changed=$(find -L "$root" -newer "$state/started" -type f -print0 \
     | while IFS= read -r -d '' file; do if test -L "$file"; then echo "$file"; fi; done)
