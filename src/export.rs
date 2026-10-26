@@ -54,15 +54,19 @@ impl<P: Plugin> Instance<P> {
 }
 
 /// Runs an entry point and turns its outcome into metamod's TRUE or FALSE.
+/// The error is logged and dropped inside the guard: its `Display` and
+/// `Drop` are plugin code that may panic.
 fn status(entry_point: &str, body: impl FnOnce() -> Result<(), Box<dyn Error>>) -> c_int {
-    match guard(entry_point, body) {
-        Some(Ok(())) => TRUE,
-        Some(Err(error)) => {
-            log::error!("{entry_point}: {error}");
-            FALSE
+    guard(entry_point, || {
+        match body() {
+            Ok(()) => TRUE,
+            Err(error) => {
+                log::error!("{entry_point}: {error}");
+                FALSE
+            }
         }
-        None => FALSE,
-    }
+    })
+    .unwrap_or(FALSE)
 }
 
 /// # Safety
@@ -276,4 +280,35 @@ macro_rules! export_plugin {
             unsafe { $crate::export::meta_detach::<$plugin>(now, reason) }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt;
+
+    use super::*;
+
+    /// An error whose Drop panics, as plugin code may.
+    #[derive(Debug)]
+    struct BrokenError;
+
+    impl fmt::Display for BrokenError {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("broken")
+        }
+    }
+
+    impl Error for BrokenError {}
+
+    impl Drop for BrokenError {
+        fn drop(&mut self) {
+            panic!("drop failed");
+        }
+    }
+
+    #[test]
+    fn error_that_panics_on_drop_still_reports_failure() {
+        assert_eq!(status("test", || Err(Box::new(BrokenError))), FALSE);
+        assert_eq!(status("test", || Ok(())), TRUE);
+    }
 }

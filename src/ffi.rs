@@ -1,6 +1,7 @@
 use std::{
     any::Any,
     ffi::{c_char, c_int, CStr, CString},
+    mem,
     panic::{self, AssertUnwindSafe},
 };
 
@@ -14,6 +15,11 @@ pub(crate) fn guard<T>(context: &str, body: impl FnOnce() -> T) -> Option<T> {
     panic::catch_unwind(AssertUnwindSafe(body))
         .map_err(|payload| {
             log::error!("{context} panicked: {}", panic_message(payload.as_ref()));
+            // The payload's Drop is plugin code too: a second panic from it
+            // is caught, and its own payload is leaked rather than dropped.
+            if let Err(nested) = panic::catch_unwind(AssertUnwindSafe(|| drop(payload))) {
+                mem::forget(nested);
+            }
         })
         .ok()
 }
@@ -72,5 +78,22 @@ mod tests {
     fn guard_contains_a_panic() {
         assert_eq!(guard("test", || -> u8 { panic!("boom") }), None);
         assert_eq!(guard("test", || 7), Some(7));
+    }
+
+    /// A value whose Drop panics, as plugin code may.
+    struct PanicsOnDrop;
+
+    impl Drop for PanicsOnDrop {
+        fn drop(&mut self) {
+            panic!("drop failed");
+        }
+    }
+
+    #[test]
+    fn guard_contains_a_payload_whose_drop_panics() {
+        assert_eq!(
+            guard("test", || -> u8 { panic::panic_any(PanicsOnDrop) }),
+            None
+        );
     }
 }
