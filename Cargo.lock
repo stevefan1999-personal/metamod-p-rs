@@ -349,8 +349,13 @@ dependencies = [
  "bindgen",
  "const-default",
  "log",
+ "metamod-p-macros",
  "miette",
 ]
+
+[[package]]
+name = "metamod-p-macros"
+version = "0.0.1"
 
 [[package]]
 name = "miette"

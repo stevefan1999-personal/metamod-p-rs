@@ -1,8 +1,12 @@
 use std::{
     any::Any,
-    ffi::{c_char, CStr, CString},
+    ffi::{c_char, c_int, CStr, CString},
     panic::{self, AssertUnwindSafe},
 };
+
+/// C truth values, as metamod entry points return them.
+pub(crate) const TRUE: c_int = 1;
+pub(crate) const FALSE: c_int = 0;
 
 /// Runs `body`, turning a panic into `None` plus an error log, because an
 /// unwind that reaches C aborts the whole server.
