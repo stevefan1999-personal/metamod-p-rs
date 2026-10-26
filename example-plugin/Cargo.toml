@@ -6,19 +6,16 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 metamod-p = { version = "*", path = ".." }
-byte-strings = "0.3.1"
-const-default = { version = "1.0.0", features = ["std", "derive"] }
-log = "0.4.20"
+log = "0.4"
 
 # VC-LTL only links on MSVC; other targets would print a skip warning.
 [target.'cfg(all(windows, target_env = "msvc"))'.dependencies]
 vc-ltl = "5.3.1"
 
 [features]
-default = []
+# Sven Co-op runs metamod-svencoop; see docs/adr/0001-metamod-flavour.md.
+default = ["fallguys"]
 
 fallguys = ["metamod-p/fallguys"]

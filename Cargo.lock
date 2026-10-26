@@ -76,26 +76,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
-name = "byte-strings"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "002ee5531feb8450e59862fefa550eeac39b726d60b186071672751045ebc29a"
-dependencies = [
- "byte-strings-proc_macros",
-]
-
-[[package]]
-name = "byte-strings-proc_macros"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62f7e0e71f98d6c71bfe42b0a7a47d0f870ad808401fad2d44fa156ed5b0ae03"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "cexpr"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -173,8 +153,6 @@ dependencies = [
 name = "example-plugin"
 version = "0.1.0"
 dependencies = [
- "byte-strings",
- "const-default",
  "log",
  "metamod-p",
  "vc-ltl",
