@@ -130,7 +130,7 @@ The crate type must be `cdylib`. The full example is in
 | Cvars | `StaticCvar::new` and `register`, `Engine::cvar`, `Cvar::value`, `string`, `set_value`, `set_string` |
 | Messages | `Engine::user_message(c"SayText")`, `Engine::message(destination, kind)` returns a `MessageWriter` with typed writes; dropping it sends `MESSAGE_END` |
 | Entities | `Engine::edict(index)`, `Engine::players()`, `Edict::index`, `is_valid`, and entvars accessors such as `health`/`set_health` |
-| Globals | `Engine::map_name`, `time`, `max_clients`, `string(string_t)` |
+| Globals | `Engine::map_name`, `time`, `max_clients`, `string(string_t)` (`unsafe`: engine strings only) |
 | Logging | the `log` crate: errors go to mutil `LogError`, warnings and info to `LogMessage`, debug and trace to `LogDeveloper` |
 | Anything else | `Engine::functions`, `util_functions`, `globals` and `metamod_p::sys` (`unsafe`) |
 

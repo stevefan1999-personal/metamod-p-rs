@@ -226,17 +226,25 @@ impl Engine {
 
     /// Name of the current map, such as `hl_c01_a1`.
     pub fn map_name(&self) -> Option<String> {
-        // SAFETY: `globals` points to the engine globals while loaded.
-        self.string(unsafe { addr_of!((*self.globals.as_ptr()).mapname).read() })
+        // SAFETY: `globals` points to the engine globals while loaded, and
+        // the engine keeps `mapname` as one of its strings.
+        unsafe { self.string(addr_of!((*self.globals.as_ptr()).mapname).read()) }
     }
 
     /// Copies an engine string (`string_t`), or `None` for the null string.
-    pub fn string(&self, value: string_t) -> Option<String> {
+    ///
+    /// # Safety
+    ///
+    /// `value` must be a `string_t` that the engine or the game made, such
+    /// as an entvars field. It is an unchecked offset into the engine's
+    /// string table, so any other value reads arbitrary memory.
+    pub unsafe fn string(&self, value: string_t) -> Option<String> {
         if value == 0 {
             return None;
         }
-        // SAFETY: the engine returns a pointer into its string table; the
-        // text is copied before any other engine call can change the table.
+        // SAFETY: for an engine string the engine returns a pointer into its
+        // string table; the text is copied before any other engine call can
+        // change the table.
         unsafe { c_str(host_call!(self.functions, pfnSzFromIndex(value))) }
             .map(|text| text.to_string_lossy().into_owned())
     }

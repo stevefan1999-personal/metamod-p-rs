@@ -161,7 +161,9 @@ impl IntoField<Vector> for [f32; 3] {
 /// `string_t` fields are offsets into the engine's string table.
 impl FromField<c_int> for Option<String> {
     fn from_field(raw: c_int, engine: &'static Engine) -> Self {
-        engine.string(raw)
+        // SAFETY: the engine and the game keep entvars string fields as
+        // engine strings.
+        unsafe { engine.string(raw) }
     }
 }
 
