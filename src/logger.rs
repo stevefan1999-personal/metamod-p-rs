@@ -1,11 +1,22 @@
+use std::ptr::addr_of;
+
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
-use crate::{ffi::to_c_string, host::Host, Engine};
+use crate::{
+    ffi::{c_str, to_c_string},
+    host::Host,
+    Engine,
+};
 
 /// Sends `log` records to metamod's log functions. Metamod prefixes them
 /// with the plugin's log tag, marks errors and prints debug and trace lines
 /// only while the `developer` cvar is on. Before metamod connects, and off
 /// the engine thread, records go to stderr.
+///
+/// The engine drops logged lines until the first map starts its log, which
+/// would hide everything a plugin logs while it attaches at server start.
+/// Until then, errors, warnings and info go straight to the console in
+/// metamod's format.
 struct MetamodLogger;
 
 impl Log for MetamodLogger {
@@ -40,12 +51,19 @@ pub(crate) fn install() {
 
 impl Engine {
     fn log(&self, level: Level, text: &str) {
-        let text = to_c_string(text);
-        let log = match level {
-            Level::Error => self.util.pfnLogError,
-            Level::Warn | Level::Info => self.util.pfnLogMessage,
-            Level::Debug | Level::Trace => self.util.pfnLogDeveloper,
+        let (log, text) = match level {
+            Level::Error | Level::Warn | Level::Info if !self.map_started() => {
+                let marker = if level == Level::Error { "ERROR: " } else { "" };
+                (
+                    self.util.pfnLogConsole,
+                    format!("[{}] {marker}{text}", self.log_tag()),
+                )
+            }
+            Level::Error => (self.util.pfnLogError, text.to_owned()),
+            Level::Warn | Level::Info => (self.util.pfnLogMessage, text.to_owned()),
+            Level::Debug | Level::Trace => (self.util.pfnLogDeveloper, text.to_owned()),
         };
+        let text = to_c_string(&text);
         match log {
             // SAFETY: the text goes in as a `%s` argument, so a `%` in it is
             // printed instead of read as a conversion, and the plugin id is
@@ -53,5 +71,17 @@ impl Engine {
             Some(log) => unsafe { log(self.plugin_id, c"%s".as_ptr(), text.as_ptr()) },
             None => eprintln!("{}", text.to_string_lossy()),
         }
+    }
+
+    fn map_started(&self) -> bool {
+        // SAFETY: `globals` points to the engine globals while loaded.
+        unsafe { addr_of!((*self.globals.as_ptr()).mapname).read() != 0 }
+    }
+
+    fn log_tag(&self) -> String {
+        // SAFETY: the plugin id points to the plugin's static info.
+        unsafe { c_str(addr_of!((*self.plugin_id).logtag).read()) }
+            .map(|tag| tag.to_string_lossy().into_owned())
+            .unwrap_or_default()
     }
 }

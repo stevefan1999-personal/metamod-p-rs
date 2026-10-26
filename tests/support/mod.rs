@@ -320,6 +320,7 @@ macro_rules! fake_log {
     };
 }
 
+fake_log!(log_console, "LogConsole");
 fake_log!(log_message, "LogMessage");
 fake_log!(log_error, "LogError");
 fake_log!(log_developer, "LogDeveloper");
@@ -368,6 +369,7 @@ fn engine_functions() -> enginefuncs_t {
 
 fn util_functions() -> mutil_funcs_t {
     mutil_funcs_t {
+        pfnLogConsole: Some(log_console),
         pfnLogMessage: Some(log_message),
         pfnLogError: Some(log_error),
         pfnLogDeveloper: Some(log_developer),
@@ -383,7 +385,8 @@ pub struct Loaded {
     pub meta_globals: &'static mut meta_globals_t,
 }
 
-/// Sets up the edicts and globals that `GiveFnptrsToDll` hands out.
+/// Sets up the edicts and globals that `GiveFnptrsToDll` hands out, with
+/// `hl_c01_a1` running.
 pub fn boot() -> (enginefuncs_t, *mut globalvars_t) {
     let edicts = Box::leak(vec![edict_t::default(); EDICT_COUNT].into_boxed_slice());
     edicts[CONNECTED_PLAYER as usize].v.flags = FL_CLIENT as c_int;

@@ -479,6 +479,32 @@ fn logged_text_is_an_argument_not_a_format_string() {
 }
 
 #[test]
+fn lines_logged_before_the_first_map_go_to_the_console() {
+    load();
+    // SAFETY: the fake globals are plain memory owned by the test.
+    unsafe { (*engine().globals().as_ptr()).mapname = 0 };
+    clear_calls();
+    log::info!("attached");
+    log::error!("broken");
+    log::debug!("hidden below the default level");
+    assert_eq!(
+        calls(),
+        [
+            Call::Log {
+                function: "LogConsole",
+                format:   "%s".into(),
+                text:     "[TEST] attached".into(),
+            },
+            Call::Log {
+                function: "LogConsole",
+                format:   "%s".into(),
+                text:     "[TEST] ERROR: broken".into(),
+            },
+        ]
+    );
+}
+
+#[test]
 fn printed_and_stuffed_text_is_never_a_format_string() {
     load();
     clear_calls();
