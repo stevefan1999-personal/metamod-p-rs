@@ -47,4 +47,4 @@
 #include <engine/shake.h>
 #include <engine/studio.h>
 
-#include <metamod/meta_api.h>
+#include <meta_api.h>

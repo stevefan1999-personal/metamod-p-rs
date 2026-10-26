@@ -1,0 +1,4 @@
+# Sven Co-op ships a 32-bit Linux server (svends_i686, dlls/server.so), so
+# plugins default to i686. Pass --target i686-pc-windows-msvc for Windows.
+[build]
+target = "i686-unknown-linux-gnu"

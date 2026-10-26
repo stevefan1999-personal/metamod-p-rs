@@ -1,81 +1,76 @@
 use std::{env, path::PathBuf};
 
-use bindgen::{
-    callbacks::{DeriveInfo, TypeKind},
-    CargoCallbacks,
-};
 use miette::{IntoDiagnostic, WrapErr};
 
-#[derive(Debug)]
-struct ConstDefaultCallbacks;
+/// Header roots of one metamod flavour: the HLSDK copy it ships and the
+/// directory that holds `meta_api.h`.
+struct MetamodVariant {
+    hlsdk:   &'static str,
+    metamod: &'static str,
+}
 
-impl bindgen::callbacks::ParseCallbacks for ConstDefaultCallbacks {
-    fn add_derives(&self, info: &DeriveInfo<'_>) -> Vec<String> {
-        if info.kind == TypeKind::Struct {
-            vec!["ConstDefault".to_string()]
-        } else {
-            vec![]
-        }
+impl MetamodVariant {
+    const FALLGUYS: Self = Self {
+        hlsdk:   "metamod-fallguys/metamod/include/HLSDK",
+        metamod: "metamod-fallguys/metamod/include",
+    };
+    const METAMOD_P: Self = Self {
+        hlsdk:   "metamod-p/hlsdk",
+        metamod: "metamod-p/metamod",
+    };
+
+    /// The HLSDK headers include each other without directory prefixes, so
+    /// every SDK subdirectory has to be on the include path.
+    fn include_args(&self) -> impl Iterator<Item = String> + '_ {
+        ["", "/common", "/dlls", "/engine", "/pm_shared"]
+            .into_iter()
+            .map(|subdir| format!("{}{subdir}", self.hlsdk))
+            .chain([self.metamod.to_string()])
+            .map(|path| format!("-I{path}"))
+    }
+
+    fn generate(&self, header: &str, file: &str) -> miette::Result<()> {
+        let out_path = PathBuf::from(env::var("OUT_DIR").into_diagnostic()?);
+        // Struct layouts depend on the pointer width, so clang must parse the
+        // headers for the cargo target (i686 for Sven Co-op), not the host.
+        let target = env::var("TARGET").into_diagnostic()?;
+
+        let bindings = bindgen::Builder::default()
+            .header(header)
+            .clang_args(self.include_args())
+            .clang_args([format!("--target={target}"), "-xc++".to_string()])
+            .allowlist_file(format!(".*?({}|{}).*", self.hlsdk, self.metamod))
+            .vtable_generation(true)
+            .ctypes_prefix("::std::ffi")
+            // The headers' doc comments are licence prose; rustdoc would run
+            // their indented lines as doctests.
+            .generate_comments(false)
+            .derive_copy(true)
+            .derive_default(true)
+            .derive_hash(true)
+            .generate_cstr(true)
+            .array_pointers_in_arguments(true)
+            .sort_semantically(true)
+            .merge_extern_blocks(true)
+            .layout_tests(true)
+            .newtype_enum(".*")
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+            .generate()
+            .into_diagnostic()
+            .wrap_err("Failed to generate bindgen config")?;
+
+        bindings
+            .write_to_file(out_path.join(file))
+            .into_diagnostic()
+            .wrap_err("Failed to generate bindgen bindings")
     }
 }
 
-fn do_bindgen(metamod_variant: &str, header: &str, file: &str) -> miette::Result<()> {
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-
-    let metamod_include_paths: Vec<String> = [
-        "",
-        "hlsdk",
-        "hlsdk/common",
-        "hlsdk/dlls",
-        "hlsdk/engine",
-        "hlsdk/pm_shared",
-        "metamod",
-    ]
-    .into_iter()
-    .map(|path| format!("{metamod_variant}/{path}"))
-    .flat_map(|path| vec!["-I".to_string(), path.to_owned()])
-    .collect();
-
-    let bindings = bindgen::Builder::default()
-        .header(header)
-        .clang_args(itertools::concat(vec![
-            metamod_include_paths,
-            vec!["-x".to_string(), "c++".to_string()],
-        ]))
-        .allowlist_file(format!(".*?{metamod_variant}.*"))
-        .vtable_generation(true)
-        .ctypes_prefix("::std::ffi")
-        .derive_copy(true)
-        .derive_hash(true)
-        .generate_cstr(true)
-        .array_pointers_in_arguments(true)
-        .sort_semantically(true)
-        .merge_extern_blocks(true)
-        .layout_tests(false)
-        .newtype_enum(".*")
-        .parse_callbacks(Box::new(ConstDefaultCallbacks))
-        .parse_callbacks(Box::new(CargoCallbacks::new()))
-        .generate()
-        .into_diagnostic()
-        .wrap_err("Failed to generate bindgen config")?;
-
-    bindings
-        .write_to_file(out_path.join(file))
-        .into_diagnostic()
-        .wrap_err("Failed to generate bindgen bindings")?;
-
-    Ok(())
-}
-
 fn main() -> miette::Result<()> {
-    do_bindgen(
-        if cfg!(feature = "fallguys") {
-            "metamod-fallguys"
-        } else {
-            "metamod-p"
-        },
-        "wrapper.h",
-        "wrapper.rs",
-    )?;
-    Ok(())
+    if cfg!(feature = "fallguys") {
+        MetamodVariant::FALLGUYS
+    } else {
+        MetamodVariant::METAMOD_P
+    }
+    .generate("wrapper.h", "wrapper.rs")
 }

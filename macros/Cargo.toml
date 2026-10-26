@@ -1,0 +1,9 @@
+[package]
+name = "metamod-p-macros"
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+description = "The #[plugin] attribute of metamod-p"
+
+[lib]
+proc-macro = true
