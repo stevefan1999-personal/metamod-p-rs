@@ -1,4 +1,3 @@
-#![feature(trivial_bounds)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod command;
@@ -35,7 +34,5 @@ pub use plugin::{LoadTime, Overrides, Plugin, PluginInfo, RejectReason, UnloadRe
     clippy::all
 )]
 pub mod sys {
-    use const_default::ConstDefault;
-
     include!(concat!(env!("OUT_DIR"), "/wrapper.rs"));
 }

@@ -1,20 +1,6 @@
 use std::{env, path::PathBuf};
 
-use bindgen::callbacks::{DeriveInfo, TypeKind};
 use miette::{IntoDiagnostic, WrapErr};
-
-#[derive(Debug)]
-struct ConstDefaultCallbacks;
-
-impl bindgen::callbacks::ParseCallbacks for ConstDefaultCallbacks {
-    fn add_derives(&self, info: &DeriveInfo<'_>) -> Vec<String> {
-        if info.kind == TypeKind::Struct {
-            vec!["ConstDefault".to_string()]
-        } else {
-            vec![]
-        }
-    }
-}
 
 /// Header roots of one metamod flavour: the HLSDK copy it ships and the
 /// directory that holds `meta_api.h`.
@@ -57,6 +43,7 @@ impl MetamodVariant {
             .vtable_generation(true)
             .ctypes_prefix("::std::ffi")
             .derive_copy(true)
+            .derive_default(true)
             .derive_hash(true)
             .generate_cstr(true)
             .array_pointers_in_arguments(true)
@@ -64,7 +51,6 @@ impl MetamodVariant {
             .merge_extern_blocks(true)
             .layout_tests(true)
             .newtype_enum(".*")
-            .parse_callbacks(Box::new(ConstDefaultCallbacks))
             .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
             .generate()
             .into_diagnostic()

@@ -10,7 +10,6 @@ license = "MIT"
 [dependencies]
 log = "0.4"
 metamod-p-macros = { version = "0.0.1", path = "macros" }
-const-default = { version = "1.0.0", features = ["std", "derive"] }
 
 [build-dependencies]
 bindgen = "0.73"
