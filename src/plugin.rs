@@ -306,7 +306,9 @@ plugin_trait! {
     }
 
     /// Hooks on the engine functions (`enginefuncs_t`) that the game DLL and
-    /// other plugins call.
+    /// other plugins call. Never add `pfnPEntityOfEntIndexAllEntities`: it is
+    /// only in the Metamod-P headers and past the end of metamod-svencoop's
+    /// table.
     mod engine_hooks(enginefuncs_t, sys::ENGINE_INTERFACE_VERSION) {
         /// Someone precaches a model.
         fn precache_model / precache_model_post(path: &CStr) -> i32

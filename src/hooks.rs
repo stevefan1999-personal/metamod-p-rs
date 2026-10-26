@@ -165,19 +165,25 @@ pub(crate) fn dispatch_post<P: Exported, R: HookReturn>(
 /// Fills a function table that metamod asks for, after checking that both
 /// sides were built for the same interface version.
 ///
+/// `install` writes single entries through the pointer and never makes a
+/// reference to the whole table: metamod allocates the table with its own
+/// headers, and its engine table (632 bytes on i686 in metamod-svencoop) is
+/// shorter than the Metamod-P `enginefuncs_t` (636 bytes).
+///
 /// # Safety
 ///
 /// `table` and `version` must be null or valid for writes, as metamod
-/// passes them.
+/// passes them, and every entry that `install` writes must be in both
+/// header sets.
 pub(crate) unsafe fn give_table<T>(
     table: *mut T,
     version: *mut c_int,
     expected: c_int,
-    install: impl FnOnce(&mut T),
+    install: unsafe fn(NonNull<T>),
 ) -> c_int {
     guard("function table request", || {
-        // SAFETY: metamod passes its own zeroed table and version variable.
-        let (Some(table), Some(version)) = (unsafe { table.as_mut() }, unsafe { version.as_mut() })
+        // SAFETY: metamod passes its own version variable.
+        let (Some(table), Some(version)) = (NonNull::new(table), unsafe { version.as_mut() })
         else {
             log::error!("metamod asked for a function table without passing one");
             return FALSE;
@@ -187,7 +193,9 @@ pub(crate) unsafe fn give_table<T>(
             *version = expected;
             return FALSE;
         }
-        install(table);
+        // SAFETY: metamod's zeroed table holds every entry of the hook
+        // list, as the caller guarantees.
+        unsafe { install(table) };
         TRUE
     })
     .unwrap_or(FALSE)
@@ -291,29 +299,42 @@ macro_rules! plugin_trait {
                     }
                 )*
 
-                fn install_pre<P: Exported>(table: &mut $Table) {
+                /// # Safety
+                ///
+                /// Every entry of this hook list must be writable in `table`.
+                unsafe fn install_pre<P: Exported>(table: ::std::ptr::NonNull<$Table>) {
                     $(
                         if P::OVERRIDES.contains(stringify!($hook)) {
-                            table.$field = Some($hook::<P>);
+                            // SAFETY: the caller guarantees that the entry is writable.
+                            unsafe {
+                                ::std::ptr::addr_of_mut!((*table.as_ptr()).$field).write(Some($hook::<P>))
+                            }
                         }
                     )*
                 }
 
-                fn install_post<P: Exported>(table: &mut $Table) {
+                /// # Safety
+                ///
+                /// Every entry of this hook list must be writable in `table`.
+                unsafe fn install_post<P: Exported>(table: ::std::ptr::NonNull<$Table>) {
                     $(
                         if P::OVERRIDES.contains(stringify!($hook_post)) {
-                            table.$field = Some($hook_post::<P>);
+                            // SAFETY: the caller guarantees that the entry is writable.
+                            unsafe {
+                                ::std::ptr::addr_of_mut!((*table.as_ptr()).$field).write(Some($hook_post::<P>))
+                            }
                         }
                     )*
                 }
 
                 unsafe extern "C" fn get_pre<P: Exported>(table: *mut $Table, version: *mut c_int) -> c_int {
-                    // SAFETY: metamod passes null or valid pointers.
+                    // SAFETY: metamod passes null or valid pointers, and the hook
+                    // list only has entries that both header sets share.
                     unsafe { give_table(table, version, $version as c_int, install_pre::<P>) }
                 }
 
                 unsafe extern "C" fn get_post<P: Exported>(table: *mut $Table, version: *mut c_int) -> c_int {
-                    // SAFETY: metamod passes null or valid pointers.
+                    // SAFETY: as in `get_pre`.
                     unsafe { give_table(table, version, $version as c_int, install_post::<P>) }
                 }
 
