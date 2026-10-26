@@ -47,7 +47,7 @@ impl CommandArgs {
 
 /// A server command registered by this plugin.
 pub(crate) struct Command {
-    name:    &'static CStr,
+    name:    CString,
     handler: Rc<dyn Fn(&CommandArgs)>,
 }
 
@@ -78,21 +78,25 @@ impl Engine {
     /// Adds a server console command that runs `handler`. Registering a name
     /// again replaces its handler. Names are matched without case, as the
     /// engine and metamod do.
-    pub fn register_command(&self, name: &'static CStr, handler: impl Fn(&CommandArgs) + 'static) {
+    pub fn register_command(&self, name: &CStr, handler: impl Fn(&CommandArgs) + 'static) {
         let handler: Rc<dyn Fn(&CommandArgs)> = Rc::new(handler);
         let mut commands = self.commands.borrow_mut();
         if let Some(command) = commands
             .iter_mut()
-            .find(|command| same_name(command.name, name))
+            .find(|command| same_name(&command.name, name))
         {
             command.handler = handler;
             return;
         }
-        commands.push(Command { name, handler });
+        commands.push(Command {
+            name: name.to_owned(),
+            handler,
+        });
         drop(commands);
-        // SAFETY: the name is static and `run_command` is a valid callback
-        // for as long as this plugin is loaded; metamod disables the command
-        // when the plugin unloads.
+        // SAFETY: metamod copies the name (strdup) and gives the engine that
+        // copy, and `run_command` is a valid callback for as long as this
+        // plugin is loaded; metamod disables the command when the plugin
+        // unloads.
         unsafe {
             host_call!(
                 self.functions,
@@ -121,7 +125,7 @@ unsafe extern "C" fn run_command() {
             .commands
             .borrow()
             .iter()
-            .find(|command| same_name(command.name, name))
+            .find(|command| same_name(&command.name, name))
             .map(|command| Rc::clone(&command.handler));
         match handler {
             Some(handler) => handler(&args),

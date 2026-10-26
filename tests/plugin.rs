@@ -63,7 +63,9 @@ impl Plugin for TestPlugin {
             let words: Vec<_> = args.iter().map(CStr::to_string_lossy).collect();
             event(format!("rs_hello {words:?} rest={:?}", args.rest()));
         });
-        engine.register_command(c"rs_detach", |_| {
+        // Names built at run time work too: metamod copies them.
+        let detach_name = CString::new("rs_detach")?;
+        engine.register_command(&detach_name, |_| {
             event(format!("Meta_Detach in a command: {}", detach_now()));
         });
         event(format!("attach {now:?}"));
