@@ -7,7 +7,7 @@ use std::ffi::{c_char, c_int, CStr};
 use const_default::ConstDefault;
 use log::{info, LevelFilter};
 use logger::SimpleLogger;
-use metamod_p::{
+use metamod_p::sys::{
     edict_t, enginefuncs_t, gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t,
     plugin_info_t, qboolean, DLL_FUNCTIONS, ENGINE_INTERFACE_VERSION, INTERFACE_VERSION,
     META_FUNCTIONS, PLUG_LOADTIME, PL_UNLOAD_REASON,

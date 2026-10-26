@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use metamod_p::META_RES;
+use metamod_p::sys::META_RES;
 
 pub enum MetaResult<T> {
     Ignored,

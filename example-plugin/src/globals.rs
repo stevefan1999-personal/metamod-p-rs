@@ -1,5 +1,5 @@
 use byte_strings::c_str;
-use metamod_p::{
+use metamod_p::sys::{
     gamedll_funcs_t, globalvars_t, meta_globals_t, mutil_funcs_t, plugin_info_t,
     META_INTERFACE_VERSION, PLUG_LOADTIME,
 };
