@@ -118,7 +118,7 @@ The crate type must be `cdylib`. The full example is in
 - Hooks are skipped (`Ignored`) when the engine passes a null or free
   entity, or a null string, where the signature cannot hold it.
 - The engine writes one message at a time. `Engine::message` refuses a
-  second writer, but it cannot see messages of the game or other plugins:
+  nested message, but it cannot see messages of the game or other plugins:
   do not start a message in a hook that runs between their
   `MESSAGE_BEGIN` and `MESSAGE_END`, such as `write_byte`.
 - Stored `Edict` handles can go stale: check `is_valid` before use and drop
@@ -133,7 +133,7 @@ The crate type must be `cdylib`. The full example is in
 | Console commands | `Engine::register_command(name, closure)`, `Engine::command_args` |
 | Precache | `Engine::precache_model`, `precache_sound`, `precache_generic` (the path is copied into the engine's string pool for the map; use `/` in paths) |
 | Cvars | `StaticCvar::new` and `register`, `Engine::cvar`, `Cvar::value`, `string`, `set_value`, `set_string` |
-| Messages | `Engine::user_message(c"SayText")`, `Engine::message(destination, kind)` returns a `MessageWriter` with typed writes; dropping it sends `MESSAGE_END` |
+| Messages | `Engine::user_message(c"SayText")`, `Engine::message(destination, kind, \|writer\| ...)` sends `MESSAGE_BEGIN`, the typed writes of the closure and `MESSAGE_END` |
 | Entities | `Engine::edict(index)`, `Engine::players()`, `Edict::index`, `is_valid`, and entvars accessors such as `health`/`set_health` |
 | Globals | `Engine::map_name`, `time`, `max_clients`, `string(string_t)` (`unsafe`: engine strings only) |
 | Logging | the `log` crate: errors go to mutil `LogError`, warnings and info to `LogMessage`, debug and trace to `LogDeveloper` |

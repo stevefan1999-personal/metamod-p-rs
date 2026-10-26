@@ -137,6 +137,11 @@ fn detach_now() -> c_int {
     unsafe { Meta_Detach(PLUG_LOADTIME::PT_ANYTIME, PL_UNLOAD_REASON::PNL_COMMAND) }
 }
 
+/// Sends an empty temporary entity message to everyone.
+fn send_empty_message() -> Result<(), MessageError> {
+    engine().message(MessageDestination::All, MessageType::TEMP_ENTITY, |_| {})
+}
+
 /// Calls the plugin's ClientConnect pre hook like metamod would.
 fn connect(loaded: &support::Loaded, player: *mut sys::edict_t, name: &CStr) -> (c_int, String) {
     let hook = loaded
@@ -362,13 +367,15 @@ fn message_writer_sends_typed_writes_between_begin_and_end() {
     assert_eq!(say_text, MessageType(SAY_TEXT));
     assert_eq!(engine().user_message(c"NoSuchMessage"), None);
     engine()
-        .message(MessageDestination::One(player), say_text)
-        .expect("no open message")
-        .byte(1)
-        .short(-2)
-        .unsigned_short(u16::MAX)
-        .string(c"hi")
-        .entity(player);
+        .message(MessageDestination::One(player), say_text, |message| {
+            message
+                .byte(1)
+                .short(-2)
+                .unsigned_short(u16::MAX)
+                .string(c"hi")
+                .entity(player);
+        })
+        .expect("no open message");
     assert_eq!(
         calls(),
         [
@@ -393,22 +400,16 @@ fn second_message_is_refused_while_one_is_open() {
     load();
     clear_calls();
     let origin = [1.0, 2.0, 3.0];
-    let writer = engine()
+    let nested = Cell::new(None);
+    engine()
         .message(
             MessageDestination::Visible(origin),
             MessageType::TEMP_ENTITY,
+            |_| nested.set(Some(send_empty_message())),
         )
         .expect("first message");
-    assert_eq!(
-        engine()
-            .message(MessageDestination::All, MessageType::TEMP_ENTITY)
-            .err(),
-        Some(MessageError::AlreadyWriting)
-    );
-    drop(writer);
-    assert!(engine()
-        .message(MessageDestination::All, MessageType::TEMP_ENTITY)
-        .is_ok());
+    assert_eq!(nested.get(), Some(Err(MessageError::AlreadyWriting)));
+    assert_eq!(send_empty_message(), Ok(()));
     assert_eq!(
         calls()[0],
         Call::MessageBegin {
@@ -425,17 +426,18 @@ fn message_end_is_sent_when_a_panic_unwinds_the_writer() {
     load();
     clear_calls();
     let unwound = panic::catch_unwind(|| {
-        let mut writer = engine()
-            .message(MessageDestination::Broadcast, MessageType::TEMP_ENTITY)
-            .expect("message");
-        writer.byte(7);
-        panic!("mid-message");
+        engine().message(
+            MessageDestination::Broadcast,
+            MessageType::TEMP_ENTITY,
+            |message| {
+                message.byte(7);
+                panic!("mid-message");
+            },
+        )
     });
     assert!(unwound.is_err());
     assert_eq!(calls().last(), Some(&Call::MessageEnd));
-    assert!(engine()
-        .message(MessageDestination::All, MessageType::TEMP_ENTITY)
-        .is_ok());
+    assert_eq!(send_empty_message(), Ok(()));
 }
 
 #[test]

@@ -67,7 +67,7 @@ impl MessageType {
 /// [`Engine::message`] refused to start a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MessageError {
-    /// Another [`MessageWriter`] is still open; the engine allows one
+    /// Another message of this plugin is still open; the engine allows one
     /// message at a time.
     AlreadyWriting,
 }
@@ -80,9 +80,7 @@ impl fmt::Display for MessageError {
 
 impl Error for MessageError {}
 
-/// Writes the body of one network message. Dropping it sends the message
-/// (`MESSAGE_END`), also when a panic unwinds through it.
-#[must_use = "the message is sent when the writer is dropped"]
+/// Writes the body of one network message inside [`Engine::message`].
 pub struct MessageWriter<'engine> {
     engine: &'engine Engine,
 }
@@ -101,12 +99,16 @@ impl Engine {
         (id != 0).then_some(MessageType(id))
     }
 
-    /// Starts a message (`MESSAGE_BEGIN`).
+    /// Sends one message: `MESSAGE_BEGIN`, the writes of `write`, then
+    /// `MESSAGE_END`. The message always ends, also when `write` panics:
+    /// a message left open makes the engine stop with a fatal error at the
+    /// next `MESSAGE_BEGIN`.
     pub fn message(
         &self,
         destination: MessageDestination,
         kind: MessageType,
-    ) -> Result<MessageWriter<'_>, MessageError> {
+        write: impl FnOnce(&mut MessageWriter<'_>),
+    ) -> Result<(), MessageError> {
         if self.writing_message.replace(true) {
             return Err(MessageError::AlreadyWriting);
         }
@@ -120,7 +122,10 @@ impl Engine {
                 pfnMessageBegin(code, kind.0, origin, receiver)
             )
         }
-        Ok(MessageWriter { engine: self })
+        // Dropping the writer ends the message, also when `write` unwinds.
+        let mut writer = MessageWriter { engine: self };
+        write(&mut writer);
+        Ok(())
     }
 }
 
