@@ -13,7 +13,10 @@ metamod-p = { version = "*", path = ".." }
 byte-strings = "0.3.1"
 const-default = { version = "1.0.0", features = ["std", "derive"] }
 log = "0.4.20"
-vc-ltl = "5.0.9"
+
+# VC-LTL only links on MSVC; other targets would print a skip warning.
+[target.'cfg(all(windows, target_env = "msvc"))'.dependencies]
+vc-ltl = "5.3.1"
 
 [features]
 default = []
