@@ -689,7 +689,7 @@ fn printed_and_stuffed_text_is_never_a_format_string() {
         calls(),
         [
             Call::Alert {
-                kind:   sys::ALERT_TYPE::at_logged.0,
+                kind:   sys::ALERT_TYPE::at_logged,
                 format: "%s".into(),
                 text:   "50%n".into(),
             },
@@ -700,7 +700,7 @@ fn printed_and_stuffed_text_is_never_a_format_string() {
             },
             Call::ClientPrint {
                 player: CONNECTED_PLAYER,
-                kind:   sys::PRINT_TYPE::print_center.0,
+                kind:   sys::PRINT_TYPE::print_center,
                 text:   "hithere".into(),
             },
             Call::ServerCommand("changelevel hl_c01_a2\n".into()),

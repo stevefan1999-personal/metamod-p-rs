@@ -107,16 +107,15 @@ jobs:
       - name: Install the Sven Co-op dedicated server
         if: steps.server.outputs.cache-hit != 'true'
         shell: bash
-        env:
-          # Git bash rewrites arguments that look like Unix paths before
-          # steamcmd.exe sees them.
-          MSYS_NO_PATHCONV: "1"
-          MSYS2_ARG_CONV_EXCL: "*"
         run: |
           set -euo pipefail
-          root="${RUNNER_TEMP}"
+          # Git bash turns these Unix paths into Windows paths for curl.exe
+          # and steamcmd.exe. Disabling that conversion makes curl fail to
+          # open the zip (exit 23).
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             root="$(cygpath -u "$RUNNER_TEMP")"
+          else
+            root="${RUNNER_TEMP}"
           fi
           install="$root/svencoop"
           mkdir -p "$install" "$root/steamcmd"
@@ -124,17 +123,15 @@ jobs:
             curl -fsSL -o "$root/steamcmd.zip" https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
             tar -xf "$root/steamcmd.zip" -C "$root/steamcmd"
             steam="$root/steamcmd/steamcmd.exe"
-            install_arg="$(cygpath -w "$install")"
           else
             curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar -xz -C "$root/steamcmd"
             steam="$root/steamcmd/steamcmd.sh"
             chmod +x "$steam"
-            install_arg="$install"
           fi
           # The first run often only updates steamcmd itself and exits non-zero.
           installed=0
           for _attempt in 1 2; do
-            if "$steam" +force_install_dir "$install_arg" +login anonymous +app_update 276060 validate +quit; then
+            if "$steam" +force_install_dir "$install" +login anonymous +app_update 276060 validate +quit; then
               installed=1
               break
             fi

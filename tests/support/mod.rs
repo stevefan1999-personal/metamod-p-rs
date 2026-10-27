@@ -29,13 +29,13 @@ const MAP_NAME: c_int = 1;
 pub enum Call {
     ServerPrint(String),
     Alert {
-        kind:   u32,
+        kind:   ALERT_TYPE,
         format: String,
         text:   String,
     },
     ClientPrint {
         player: c_int,
-        kind:   u32,
+        kind:   PRINT_TYPE,
         text:   String,
     },
     ServerCommand(String),
@@ -146,17 +146,17 @@ unsafe extern "C" fn alert(kind: ALERT_TYPE, format: AlertFormat, mut arguments:
     // SAFETY: the plugin passes one C string after its `%s` format.
     let argument = unsafe { arguments.next_arg::<*const c_char>() };
     record(Call::Alert {
-        kind:   kind.0,
+        kind,
         format: text(format),
-        text:   text(argument),
+        text: text(argument),
     });
 }
 
 unsafe extern "C" fn client_print(player: *mut edict_t, kind: PRINT_TYPE, message: *const c_char) {
     record(Call::ClientPrint {
         player: index_of(player),
-        kind:   kind.0,
-        text:   text(message),
+        kind,
+        text: text(message),
     });
 }
 
