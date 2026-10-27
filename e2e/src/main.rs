@@ -85,6 +85,10 @@ fn run(options: Options) -> Result<(), String> {
     link_farm(&options.server_dir, &root)?;
     install_metamod(&root, &archive)?;
     install_plugin(&root, &plugin)?;
+    // svends.exe does not read a stdin pipe. server.cfg runs at map start,
+    // and its output is the console log the checks read.
+    #[cfg(windows)]
+    install_console_cfg(&root)?;
 
     let log_path = root.join("server.log");
     let log_file = fs::File::create(&log_path).map_err(|error| error.to_string())?;
@@ -393,6 +397,26 @@ fn install_metamod(root: &Path, archive: &Archive) -> Result<(), String> {
         "linux addons/rust_hello/rust_hello.so\nwin32 addons/rust_hello/rust_hello.dll\n",
     )
     .map_err(|error| error.to_string())
+}
+
+#[cfg(windows)]
+fn install_console_cfg(root: &Path) -> Result<(), String> {
+    let path = root.join("svencoop/server.cfg");
+    let original = fs::read_to_string(&path).unwrap_or_default();
+    if path.exists() {
+        // A hard link shares the install's file. Drop the link, then write a
+        // new file so the commands do not land in the shared server.cfg.
+        let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+        let mut permissions = metadata.permissions();
+        permissions.set_readonly(false);
+        fs::set_permissions(&path, permissions).map_err(|error| error.to_string())?;
+        unlink(&path)?;
+    }
+    let script = format!(
+        "{original}\nsv_lan 1\nmeta list\nmeta cmds\nmeta cvars\nrs_hello from the e2e test\nmeta \
+         unload rust_hello\nmeta load addons/rust_hello/rust_hello.dll\nrs_hello after reload\n"
+    );
+    fs::write(&path, script).map_err(|error| format!("write {}: {error}", path.display()))
 }
 
 fn install_plugin(root: &Path, plugin: &Path) -> Result<(), String> {
