@@ -408,14 +408,26 @@ fn install_console_cfg(root: &Path) -> Result<(), String> {
         // new file so the commands do not land in the shared server.cfg.
         let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
         let mut permissions = metadata.permissions();
+        // This file is our copy. On Windows the call clears the readonly
+        // attribute. The Unix meaning (world writable) does not apply here.
+        #[allow(clippy::permissions_set_readonly_false)]
         permissions.set_readonly(false);
         fs::set_permissions(&path, permissions).map_err(|error| error.to_string())?;
         unlink(&path)?;
     }
-    let script = format!(
-        "{original}\nsv_lan 1\nmeta list\nmeta cmds\nmeta cvars\nrs_hello from the e2e test\nmeta \
-         unload rust_hello\nmeta load addons/rust_hello/rust_hello.dll\nrs_hello after reload\n"
-    );
+    let script = [
+        original.as_str(),
+        "sv_lan 1",
+        "meta list",
+        "meta cmds",
+        "meta cvars",
+        "rs_hello from the e2e test",
+        "meta unload rust_hello",
+        "meta load addons/rust_hello/rust_hello.dll",
+        "rs_hello after reload",
+        "",
+    ]
+    .join("\n");
     fs::write(&path, script).map_err(|error| format!("write {}: {error}", path.display()))
 }
 
@@ -567,6 +579,19 @@ fn symlink(source: &Path, destination: &Path) -> Result<(), String> {
             .map_err(|error| format!("stat {}: {error}", source.display()))?;
         if metadata.is_dir() {
             junction(source, destination)
+        } else if destination
+            .file_name()
+            .is_some_and(|name| name == "server.cfg")
+        {
+            // A hard link would make the console commands overwrite the
+            // install.
+            fs::copy(source, destination).map(|_| ()).map_err(|error| {
+                format!(
+                    "copy {} -> {}: {error}",
+                    destination.display(),
+                    source.display()
+                )
+            })
         } else {
             fs::hard_link(source, destination)
                 .or_else(|_| fs::copy(source, destination).map(|_| ()))
