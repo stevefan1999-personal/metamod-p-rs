@@ -1,5 +1,5 @@
 [workspace]
-members = ["example-plugin", "macros"]
+members = ["e2e", "example-plugin", "macros"]
 
 [package]
 name = "metamod-p"

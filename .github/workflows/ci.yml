@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: clippy, rustfmt
+
+      - name: Linux i686 toolchain
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add i686-unknown-linux-gnu
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang libclang-dev gcc-multilib g++-multilib libc6-dev-i386 lib32stdc++6 pkg-config curl
+
+      - name: Windows i686 toolchain
+        if: runner.os == 'Windows'
+        shell: bash
+        run: rustup target add i686-pc-windows-msvc
+
+      - uses: KyleMayes/install-llvm-action@v2
+        if: runner.os == 'Windows'
+        with:
+          version: "18"
+
+      - uses: taiki-e/install-action@just
+      - uses: taiki-e/install-action@cargo-nextest
+
+      - name: Header trees
+        shell: bash
+        run: bash scripts/fetch-headers.sh
+
+      - name: Lint and unit tests
+        shell: bash
+        run: just lint && just test
+
+      - name: Example plugin
+        shell: bash
+        run: just build
+
+  e2e:
+    name: dedicated server (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - name: Linux i686 toolchain
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add i686-unknown-linux-gnu
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang libclang-dev gcc-multilib g++-multilib libc6-dev-i386 lib32stdc++6 pkg-config curl
+
+      - name: Windows i686 toolchain
+        if: runner.os == 'Windows'
+        shell: bash
+        run: rustup target add i686-pc-windows-msvc
+
+      - uses: KyleMayes/install-llvm-action@v2
+        if: runner.os == 'Windows'
+        with:
+          version: "18"
+
+      - uses: taiki-e/install-action@just
+
+      - name: Header trees
+        shell: bash
+        run: bash scripts/fetch-headers.sh
+
+      - uses: actions/cache@v4
+        id: server
+        with:
+          path: ${{ runner.temp }}/svencoop
+          key: svencoop-276060-${{ runner.os }}-v1
+
+      - name: Install the Sven Co-op dedicated server
+        if: steps.server.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          # Git bash rewrites arguments that look like Unix paths before
+          # steamcmd.exe sees them.
+          MSYS_NO_PATHCONV: "1"
+          MSYS2_ARG_CONV_EXCL: "*"
+        run: |
+          set -euo pipefail
+          root="${RUNNER_TEMP}"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            root="$(cygpath -u "$RUNNER_TEMP")"
+          fi
+          install="$root/svencoop"
+          mkdir -p "$install" "$root/steamcmd"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            curl -fsSL -o "$root/steamcmd.zip" https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
+            tar -xf "$root/steamcmd.zip" -C "$root/steamcmd"
+            steam="$root/steamcmd/steamcmd.exe"
+            install_arg="$(cygpath -w "$install")"
+          else
+            curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar -xz -C "$root/steamcmd"
+            steam="$root/steamcmd/steamcmd.sh"
+            chmod +x "$steam"
+            install_arg="$install"
+          fi
+          # The first run often only updates steamcmd itself and exits non-zero.
+          installed=0
+          for _attempt in 1 2; do
+            if "$steam" +force_install_dir "$install_arg" +login anonymous +app_update 276060 validate +quit; then
+              installed=1
+              break
+            fi
+          done
+          test "$installed" = 1
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            compgen -G "$install"/svends*.exe >/dev/null
+          else
+            compgen -G "$install"/svends* >/dev/null
+          fi
+
+      - name: Server, plugin, and fake client
+        shell: bash
+        env:
+          SVEN_SERVER_DIR: ${{ runner.temp }}/svencoop
+        run: just e2e 27016 hl_c01_a1

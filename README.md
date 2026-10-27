@@ -165,7 +165,7 @@ To install the plugin on a server with metamod-svencoop:
 ## Test
 
 ```sh
-just test             # unit, fake-host and doc tests, both header flavours
+just test             # unit, fake-host, packet and doc tests, both header flavours
 just test --target i686-unknown-linux-gnu
 just lint             # rustfmt and clippy, warnings are errors
 ```
@@ -173,6 +173,14 @@ just lint             # rustfmt and clippy, warnings are errors
 The integration tests in `tests/` load a test plugin through its real C
 entry points into a fake engine and metamod. Use `cargo nextest`: every
 test needs its own process, because the plugin keeps its state in statics.
+
+`just e2e` starts the Sven Co-op dedicated server (`SVEN_SERVER_DIR`, or
+the Steam install), loads the example plugin under metamod-svencoop, and
+joins with a fake GoldSrc client named `RustFake`. The client only
+completes the connection, so the check is the plugin's `ClientConnect`
+log. GitHub Actions runs `just test` and `just e2e` on Linux and Windows.
+On Windows the plugin target is `i686-pc-windows-msvc` and the server
+binary is `svends.exe`.
 
 ## Smoke test on a real server
 

@@ -3,7 +3,7 @@ set shell := ['bash', '-euo', 'pipefail', '-c']
 steam_common := env('STEAM_COMMON', home_directory() / '.local/share/Steam/steamapps/common')
 server_dir := env('SVEN_SERVER_DIR', steam_common / 'Sven Co-op Dedicated Server')
 smoke_root := env('SMOKE_ROOT', parent_directory(justfile_directory()) / '.svends-rust')
-plugin_target := env('PLUGIN_TARGET', 'i686-unknown-linux-gnu')
+plugin_target := env('PLUGIN_TARGET', if os() == "windows" { "i686-pc-windows-msvc" } else { "i686-unknown-linux-gnu" })
 
 # The metamod-svencoop release that the smoke test runs. Its interface
 # version must not be older than the headers in metamod-fallguys.
@@ -25,6 +25,7 @@ build target=plugin_target profile='release':
 test *args:
   cargo nextest run -p metamod-p {{args}}
   cargo nextest run -p metamod-p --features fallguys {{args}}
+  cargo nextest run -p e2e
   cargo test --doc -p metamod-p
   cargo test --doc -p metamod-p --features fallguys
 
@@ -133,6 +134,11 @@ smoke port='27016' map='hl_c01_a1' root=smoke_root target=plugin_target: (smoke-
     | while IFS= read -r -d '' file; do if test -L "$file"; then echo "$file"; fi; done)
   if test -n "$changed"; then echo "FAILED: shared files changed during the run:" >&2; echo "$changed" >&2; failed=1; else echo 'ok: no shared file changed'; fi
   exit "$failed"
+
+# Boot a dedicated server, run the example plugin, and join with a fake client: just e2e
+[group('smoke')]
+e2e port='27016' map='hl_c01_a1': (build)
+  cargo run -p e2e -- --server-dir '{{server_dir}}' --port {{port}} --map {{map}}
 
 # Remove the isolated server root: just smoke-clean
 [group('smoke')]
