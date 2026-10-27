@@ -60,7 +60,8 @@ jobs:
 
   e2e:
     name: dedicated server (${{ matrix.os }})
-    needs: test
+    # Do not wait on the test matrix. A failure on one OS would skip the
+    # server job on both, so each OS installs Sven Co-op and joins it itself.
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

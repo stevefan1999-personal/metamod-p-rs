@@ -125,6 +125,10 @@ impl UnloadReason {
             PL_UNLOAD_REASON::PNL_RELOAD => Self::Reload,
             #[cfg(feature = "fallguys")]
             PL_UNLOAD_REASON::PNL_SHUTDOWN => Self::Shutdown,
+            // GCC makes this enum unsigned. MSVC makes it a signed int.
+            #[cfg(windows)]
+            other => Self::Other(other.0 as u32),
+            #[cfg(not(windows))]
             other => Self::Other(other.0),
         }
     }
