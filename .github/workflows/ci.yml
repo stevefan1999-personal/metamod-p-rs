@@ -121,7 +121,11 @@ jobs:
           mkdir -p "$install" "$root/steamcmd"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             curl -fsSL -o "$root/steamcmd.zip" https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip
-            tar -xf "$root/steamcmd.zip" -C "$root/steamcmd"
+            # The runner's tar reads the zip as a tar archive and rejects it.
+            STEAM_ZIP="$(cygpath -w "$root/steamcmd.zip")"
+            STEAM_DIR="$(cygpath -w "$root/steamcmd")"
+            export STEAM_ZIP STEAM_DIR
+            powershell.exe -NoProfile -Command 'Expand-Archive -LiteralPath $env:STEAM_ZIP -DestinationPath $env:STEAM_DIR -Force'
             steam="$root/steamcmd/steamcmd.exe"
           else
             curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar -xz -C "$root/steamcmd"
