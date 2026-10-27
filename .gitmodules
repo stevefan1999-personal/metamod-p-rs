@@ -1,7 +1,12 @@
+# update=none: a cargo git dependency must not clone these trees. metamod-fallguys
+# pulls bullet3 and the rest of the game, and the compiler only needs the
+# include trees, which build.rs fetches.
 [submodule "metamod-p"]
 	path = metamod-p
 	url = https://github.com/Bots-United/metamod-p
+	update = none
 
 [submodule "metamod-fallguys"]
 	path = metamod-fallguys
 	url = https://github.com/hzqst/metamod-fallguys
+	update = none
