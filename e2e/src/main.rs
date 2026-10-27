@@ -78,7 +78,7 @@ fn run(options: Options) -> Result<(), String> {
     };
     let binary = server_binary(&options.server_dir)?;
     let plugin = plugin_library()?;
-    let root = env::temp_dir().join(format!("metamod-p-e2e-{}", options.port));
+    let root = farm_dir(&options.server_dir, options.port);
     if root.exists() {
         remove_farm(&root)?;
     }
@@ -109,9 +109,10 @@ fn run(options: Options) -> Result<(), String> {
         let libraries = format!("{}:{}", root.display(), root.join("redist").display());
         command.env("LD_LIBRARY_PATH", libraries);
     }
+    let program = root.join(binary.file_name().unwrap());
     let mut server = command
         .spawn()
-        .map_err(|error| format!("could not start the server: {error}"))?;
+        .map_err(|error| format!("could not start {}: {error}", program.display()))?;
     let outcome = drive(&mut server, &root, &log_path, &options);
     let _ = writeln!(server.stdin.as_mut().unwrap(), "quit");
     let _ = server.kill();
@@ -281,6 +282,21 @@ fn plugin_library() -> Result<PathBuf, String> {
             path.display()
         ))
     }
+}
+
+/// Hard links cannot cross volumes, so the Windows farm sits beside the
+/// install. Symlinks have no such limit and stay in the temp directory.
+#[cfg(windows)]
+fn farm_dir(server_dir: &Path, port: u16) -> PathBuf {
+    server_dir
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(format!("metamod-p-e2e-{port}"))
+}
+
+#[cfg(not(windows))]
+fn farm_dir(_server_dir: &Path, port: u16) -> PathBuf {
+    env::temp_dir().join(format!("metamod-p-e2e-{port}"))
 }
 
 fn link_farm(server_dir: &Path, root: &Path) -> Result<(), String> {
@@ -458,8 +474,12 @@ fn unlink(path: &Path) -> Result<(), String> {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return Ok(());
     };
-    if metadata.file_type().is_symlink() || metadata.is_file() {
-        fs::remove_file(path).map_err(|error| error.to_string())
+    if is_link(&metadata) || metadata.is_file() {
+        // A junction is a directory reparse point. remove_file does not
+        // remove it, and remove_dir removes the junction without its target.
+        fs::remove_file(path)
+            .or_else(|_| fs::remove_dir(path))
+            .map_err(|error| format!("unlink {}: {error}", path.display()))
     } else {
         fs::remove_dir_all(path).map_err(|error| error.to_string())
     }
@@ -475,8 +495,10 @@ fn remove_tree(path: &Path) -> Result<(), String> {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return Ok(());
     };
-    if metadata.file_type().is_symlink() || metadata.is_file() {
-        return fs::remove_file(path).map_err(|error| error.to_string());
+    if is_link(&metadata) || metadata.is_file() {
+        return fs::remove_file(path)
+            .or_else(|_| fs::remove_dir(path))
+            .map_err(|error| format!("unlink {}: {error}", path.display()));
     }
     for entry in fs::read_dir(path).map_err(|error| error.to_string())? {
         remove_tree(&entry.map_err(|error| error.to_string())?.path())?;
@@ -484,19 +506,75 @@ fn remove_tree(path: &Path) -> Result<(), String> {
     fs::remove_dir(path).map_err(|error| error.to_string())
 }
 
+fn is_link(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    // Directory junctions are reparse points, and Rust does not report them
+    // as symlinks. Following one would delete the dedicated-server install.
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 fn symlink(source: &Path, destination: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(source, destination).map_err(|error| error.to_string())
+        std::os::unix::fs::symlink(source, destination).map_err(|error| {
+            format!(
+                "symlink {} -> {}: {error}",
+                destination.display(),
+                source.display()
+            )
+        })
     }
+    // CreateSymbolicLinkW is denied on the GitHub Windows runner. A junction
+    // or a hard link does not need that privilege.
     #[cfg(windows)]
     {
-        if source.is_dir() {
-            std::os::windows::fs::symlink_dir(source, destination)
+        let metadata = fs::symlink_metadata(source)
+            .map_err(|error| format!("stat {}: {error}", source.display()))?;
+        if metadata.is_dir() {
+            junction(source, destination)
         } else {
-            std::os::windows::fs::symlink_file(source, destination)
+            fs::hard_link(source, destination)
+                .or_else(|_| fs::copy(source, destination).map(|_| ()))
+                .map_err(|error| {
+                    format!(
+                        "link {} -> {}: {error}",
+                        destination.display(),
+                        source.display()
+                    )
+                })
         }
-        .map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(windows)]
+fn junction(target: &Path, link: &Path) -> Result<(), String> {
+    let output = Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .output()
+        .map_err(|error| format!("mklink: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let message = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "junction {} -> {}: {}",
+            link.display(),
+            target.display(),
+            message.trim()
+        ))
     }
 }
 
