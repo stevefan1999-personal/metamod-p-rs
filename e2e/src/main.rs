@@ -516,7 +516,7 @@ fn is_link(metadata: &fs::Metadata) -> bool {
     {
         use std::os::windows::fs::MetadataExt;
         const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
     }
     #[cfg(not(windows))]
     {
@@ -559,22 +559,18 @@ fn symlink(source: &Path, destination: &Path) -> Result<(), String> {
 
 #[cfg(windows)]
 fn junction(target: &Path, link: &Path) -> Result<(), String> {
+    // cmd treats a `/` inside an unquoted path as a switch.
+    let link = link.as_os_str().to_string_lossy().replace('/', "\\");
+    let target = target.as_os_str().to_string_lossy().replace('/', "\\");
     let output = Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(link)
-        .arg(target)
+        .args(["/C", "mklink", "/J", &link, &target])
         .output()
         .map_err(|error| format!("mklink: {error}"))?;
     if output.status.success() {
         Ok(())
     } else {
         let message = String::from_utf8_lossy(&output.stderr);
-        Err(format!(
-            "junction {} -> {}: {}",
-            link.display(),
-            target.display(),
-            message.trim()
-        ))
+        Err(format!("junction {link} -> {target}: {}", message.trim()))
     }
 }
 
