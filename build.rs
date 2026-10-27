@@ -1,4 +1,4 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, process::Command};
 
 use miette::{IntoDiagnostic, WrapErr};
 
@@ -27,6 +27,32 @@ impl MetamodVariant {
             .map(|subdir| format!("{}{subdir}", self.hlsdk))
             .chain([self.metamod.to_string()])
             .map(|path| format!("-I{path}"))
+    }
+
+    /// A git dependency has the header trees as gitlinks, not as files. Fetch
+    /// the include trees the same way CI does, and leave a developer checkout
+    /// that already has them alone.
+    fn ensure(&self) -> miette::Result<()> {
+        let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").into_diagnostic()?);
+        let marker = root.join(self.metamod).join("meta_api.h");
+        if marker.is_file() {
+            return Ok(());
+        }
+        let status = Command::new("bash")
+            .arg(root.join("scripts/fetch-headers.sh"))
+            .status()
+            .into_diagnostic()
+            .wrap_err("run scripts/fetch-headers.sh")?;
+        if !status.success() {
+            return Err(miette::miette!("header fetch failed"));
+        }
+        if !marker.is_file() {
+            return Err(miette::miette!(
+                "header fetch did not write {}",
+                marker.display()
+            ));
+        }
+        Ok(())
     }
 
     fn generate(&self, header: &str, file: &str) -> miette::Result<()> {
@@ -67,10 +93,11 @@ impl MetamodVariant {
 }
 
 fn main() -> miette::Result<()> {
-    if cfg!(feature = "fallguys") {
+    let variant = if cfg!(feature = "fallguys") {
         MetamodVariant::FALLGUYS
     } else {
         MetamodVariant::METAMOD_P
-    }
-    .generate("wrapper.h", "wrapper.rs")
+    };
+    variant.ensure()?;
+    variant.generate("wrapper.h", "wrapper.rs")
 }

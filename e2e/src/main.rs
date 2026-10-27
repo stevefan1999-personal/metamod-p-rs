@@ -36,6 +36,36 @@ struct Options {
     server_dir: PathBuf,
     port:       u16,
     map:        String,
+    /// A plugin other than the example. Its checks are `--expect` substrings.
+    plugin:     Option<PathBuf>,
+    addon:      Option<String>,
+    expects:    Vec<String>,
+}
+
+struct PluginSpec {
+    source:    PathBuf,
+    addon:     String,
+    file_name: String,
+    example:   bool,
+    expects:   Vec<String>,
+}
+
+impl PluginSpec {
+    fn stem(&self) -> &str {
+        self.file_name.split('.').next().unwrap_or(&self.file_name)
+    }
+
+    fn relative(&self) -> String {
+        format!("addons/{}/{}", self.addon, self.file_name)
+    }
+
+    fn ini(&self) -> String {
+        let stem = self.stem();
+        format!(
+            "linux addons/{addon}/{stem}.so\nwin32 addons/{addon}/{stem}.dll\n",
+            addon = self.addon
+        )
+    }
 }
 
 fn main() {
@@ -49,6 +79,9 @@ fn options() -> Options {
     let mut server_dir = env::var_os("SVEN_SERVER_DIR").map(PathBuf::from);
     let mut port = 27016_u16;
     let mut map = "hl_c01_a1".to_string();
+    let mut plugin = None;
+    let mut addon = None;
+    let mut expects = Vec::new();
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -60,6 +93,9 @@ fn options() -> Options {
                     .expect("--port needs a number")
             }
             "--map" => map = args.next().expect("--map needs a name"),
+            "--plugin" => plugin = args.next().map(PathBuf::from),
+            "--addon" => addon = args.next(),
+            "--expect" => expects.push(args.next().expect("--expect needs a substring")),
             other => panic!("unknown argument {other}"),
         }
     }
@@ -67,7 +103,47 @@ fn options() -> Options {
         server_dir: server_dir.expect("set SVEN_SERVER_DIR or pass --server-dir"),
         port,
         map,
+        plugin,
+        addon,
+        expects,
     }
+}
+
+fn plugin_spec(options: &Options) -> Result<PluginSpec, String> {
+    let Some(source) = options.plugin.clone() else {
+        return Ok(PluginSpec {
+            source:    plugin_library()?,
+            addon:     "rust_hello".to_string(),
+            file_name: if cfg!(windows) {
+                "rust_hello.dll"
+            } else {
+                "rust_hello.so"
+            }
+            .to_string(),
+            example:   true,
+            expects:   Vec::new(),
+        });
+    };
+    let mut file_name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("plugin.so")
+        .to_string();
+    if let Some(stripped) = file_name.strip_prefix("lib") {
+        file_name = stripped.to_string();
+    }
+    if cfg!(windows) {
+        let stem = file_name.split('.').next().unwrap_or("plugin");
+        file_name = format!("{stem}.dll");
+    }
+    let stem = file_name.split('.').next().unwrap_or("plugin").to_string();
+    Ok(PluginSpec {
+        source,
+        addon: options.addon.clone().unwrap_or(stem),
+        file_name,
+        example: false,
+        expects: options.expects.clone(),
+    })
 }
 
 fn run(options: Options) -> Result<(), String> {
@@ -77,18 +153,18 @@ fn run(options: Options) -> Result<(), String> {
         LINUX_METAMOD
     };
     let binary = server_binary(&options.server_dir)?;
-    let plugin = plugin_library()?;
+    let plugin = plugin_spec(&options)?;
     let root = farm_dir(&options.server_dir, options.port);
     if root.exists() {
         remove_farm(&root)?;
     }
     link_farm(&options.server_dir, &root)?;
-    install_metamod(&root, &archive)?;
+    install_metamod(&root, &archive, &plugin)?;
     install_plugin(&root, &plugin)?;
     // svends.exe does not read a stdin pipe. server.cfg runs at map start,
     // and its output is the console log the checks read.
     #[cfg(windows)]
-    install_console_cfg(&root)?;
+    install_console_cfg(&root, &console_script(&plugin))?;
 
     let log_path = root.join("server.log");
     let log_file = fs::File::create(&log_path).map_err(|error| error.to_string())?;
@@ -117,7 +193,7 @@ fn run(options: Options) -> Result<(), String> {
     let mut server = command
         .spawn()
         .map_err(|error| format!("could not start {}: {error}", program.display()))?;
-    let outcome = drive(&mut server, &root, &log_path, &options);
+    let outcome = drive(&mut server, &root, &log_path, &options, &plugin);
     let _ = writeln!(server.stdin.as_mut().unwrap(), "quit");
     let _ = server.kill();
     let _ = server.wait();
@@ -125,19 +201,39 @@ fn run(options: Options) -> Result<(), String> {
     outcome.and(cleanup)
 }
 
+fn console_script(plugin: &PluginSpec) -> String {
+    let mut lines = vec![
+        "sv_lan 1".to_string(),
+        "meta list".to_string(),
+        "meta cmds".to_string(),
+        "meta cvars".to_string(),
+    ];
+    if plugin.example {
+        lines.push("rs_hello from the e2e test".to_string());
+    }
+    lines.push(format!("meta unload {}", plugin.stem()));
+    lines.push(format!("meta load {}", plugin.relative()));
+    if plugin.example {
+        lines.push("rs_hello after reload".to_string());
+    }
+    lines.join("\n")
+}
+
 fn drive(
     server: &mut Child,
     root: &Path,
     log_path: &Path,
     options: &Options,
+    plugin: &PluginSpec,
 ) -> Result<(), String> {
     wait_for_map(server, log_path)?;
     let stdin = server.stdin.as_mut().ok_or("the server has no console")?;
-    writeln!(
-        stdin,
-        "sv_lan 1\nmeta list\nmeta cmds\nmeta cvars\nrs_hello from the e2e test"
-    )
-    .map_err(|error| error.to_string())?;
+    let script = console_script(plugin);
+    let (before, after) = script
+        .split_once("meta unload")
+        .map(|(before, after)| (before.to_string(), format!("meta unload{after}")))
+        .unwrap_or((script.clone(), String::new()));
+    writeln!(stdin, "{before}").map_err(|error| error.to_string())?;
     thread::sleep(Duration::from_secs(2));
     if let Err(error) = client::connect(format!("127.0.0.1:{}", options.port).parse().unwrap()) {
         let console = fs::read_to_string(log_path).unwrap_or_default();
@@ -153,64 +249,68 @@ fn drive(
         return Err(format!("{error}\n--- server log ---\n{tail}"));
     }
     thread::sleep(Duration::from_secs(2));
-    let library = if cfg!(windows) {
-        "rust_hello.dll"
-    } else {
-        "rust_hello.so"
-    };
-    writeln!(
-        stdin,
-        "meta unload rust_hello\nmeta load addons/rust_hello/{library}\nrs_hello after reload"
-    )
-    .map_err(|error| error.to_string())?;
+    writeln!(stdin, "{after}").map_err(|error| error.to_string())?;
     thread::sleep(Duration::from_secs(2));
 
     let console = fs::read_to_string(log_path).unwrap_or_default();
     let metamod = fs::read_to_string(root.join("metamod.log")).unwrap_or_default();
     let mut failed = false;
-    check(
-        &console,
-        "the plugin attached",
-        "[RSHELLO] attached at Startup",
-        &mut failed,
-    );
-    check(
-        &console,
-        "meta list shows the plugin",
-        "Rust Hello",
-        &mut failed,
-    );
-    check(
-        &console,
-        "the map activated",
-        &format!("[RSHELLO] map {} is active", options.map),
-        &mut failed,
-    );
-    check(
-        &metamod,
-        "a precache post hook ran",
-        "first precache:",
-        &mut failed,
-    );
-    check(&console, "rs_hello ran", "from the e2e test", &mut failed);
-    check(
-        &console,
-        "the fake client reached ClientConnect",
-        &format!("\"{}\" connects from", client::NAME),
-        &mut failed,
-    );
-    check(
-        &console,
-        "the plugin reloaded",
-        "attached at AnyTime",
-        &mut failed,
-    );
-    check(
-        &console,
-        "rs_hello ran after reload",
-        "after reload",
-        &mut failed,
-    );
+    if plugin.example {
+        check(
+            &console,
+            "the plugin attached",
+            "[RSHELLO] attached at Startup",
+            &mut failed,
+        );
+        check(
+            &console,
+            "meta list shows the plugin",
+            "Rust Hello",
+            &mut failed,
+        );
+        check(
+            &console,
+            "the map activated",
+            &format!("[RSHELLO] map {} is active", options.map),
+            &mut failed,
+        );
+        check(
+            &metamod,
+            "a precache post hook ran",
+            "first precache:",
+            &mut failed,
+        );
+        check(&console, "rs_hello ran", "from the e2e test", &mut failed);
+        check(
+            &console,
+            "the fake client reached ClientConnect",
+            &format!("\"{}\" connects from", client::NAME),
+            &mut failed,
+        );
+        check(
+            &console,
+            "the plugin reloaded",
+            "attached at AnyTime",
+            &mut failed,
+        );
+        check(
+            &console,
+            "rs_hello ran after reload",
+            "after reload",
+            &mut failed,
+        );
+    } else {
+        let combined = format!("{console}\n{metamod}");
+        for needle in &plugin.expects {
+            check(&combined, needle, needle, &mut failed);
+        }
+        check(
+            &console,
+            "the fake client reached the server",
+            client::NAME,
+            &mut failed,
+        );
+    }
     if console.contains("panicked")
         || metamod.contains("panicked")
         || console.contains("Failed to attach")
@@ -359,7 +459,7 @@ fn materialize_maps(server_dir: &Path, root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn install_metamod(root: &Path, archive: &Archive) -> Result<(), String> {
+fn install_metamod(root: &Path, archive: &Archive, plugin: &PluginSpec) -> Result<(), String> {
     let zip_path = root.join(archive.name);
     let bytes = download(&format!(
         "https://github.com/metamod-svencoop/metamod-svencoop/releases/download/v20261009a/{}",
@@ -394,13 +494,13 @@ fn install_metamod(root: &Path, archive: &Archive) -> Result<(), String> {
     }
     fs::write(
         root.join("svencoop/addons/metamod/plugins.ini"),
-        "linux addons/rust_hello/rust_hello.so\nwin32 addons/rust_hello/rust_hello.dll\n",
+        plugin.ini(),
     )
     .map_err(|error| error.to_string())
 }
 
 #[cfg(windows)]
-fn install_console_cfg(root: &Path) -> Result<(), String> {
+fn install_console_cfg(root: &Path, commands: &str) -> Result<(), String> {
     let path = root.join("svencoop/server.cfg");
     let original = fs::read_to_string(&path).unwrap_or_default();
     if path.exists() {
@@ -415,31 +515,17 @@ fn install_console_cfg(root: &Path) -> Result<(), String> {
         fs::set_permissions(&path, permissions).map_err(|error| error.to_string())?;
         unlink(&path)?;
     }
-    let script = [
-        original.as_str(),
-        "sv_lan 1",
-        "meta list",
-        "meta cmds",
-        "meta cvars",
-        "rs_hello from the e2e test",
-        "meta unload rust_hello",
-        "meta load addons/rust_hello/rust_hello.dll",
-        "rs_hello after reload",
-        "",
-    ]
-    .join("\n");
+    let script = format!("{original}\n{commands}\n");
     fs::write(&path, script).map_err(|error| format!("write {}: {error}", path.display()))
 }
 
-fn install_plugin(root: &Path, plugin: &Path) -> Result<(), String> {
-    let name = if cfg!(windows) {
-        "rust_hello.dll"
-    } else {
-        "rust_hello.so"
-    };
-    let destination = root.join("svencoop/addons/rust_hello").join(name);
+fn install_plugin(root: &Path, plugin: &PluginSpec) -> Result<(), String> {
+    let destination = root
+        .join("svencoop/addons")
+        .join(&plugin.addon)
+        .join(&plugin.file_name);
     fs::create_dir_all(destination.parent().unwrap()).map_err(|error| error.to_string())?;
-    fs::copy(plugin, destination).map_err(|error| error.to_string())?;
+    fs::copy(&plugin.source, destination).map_err(|error| error.to_string())?;
     Ok(())
 }
 
